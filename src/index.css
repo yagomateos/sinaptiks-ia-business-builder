@@ -1,0 +1,125 @@
+@import url('https://rsms.me/inter/inter.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 20% 12%;
+
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 16% 96%;
+    --secondary-foreground: 224 20% 20%;
+
+    --muted: 220 16% 96%;
+    --muted-foreground: 220 9% 46%;
+
+    --accent: 243 100% 97%;
+    --accent-foreground: 243 75% 45%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 220 14% 91%;
+    --input: 220 14% 91%;
+    --ring: 243 75% 59%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 224 24% 7%;
+    --foreground: 220 14% 96%;
+
+    --card: 224 22% 10%;
+    --card-foreground: 220 14% 96%;
+
+    --popover: 224 22% 10%;
+    --popover-foreground: 220 14% 96%;
+
+    --primary: 243 80% 67%;
+    --primary-foreground: 224 24% 7%;
+
+    --secondary: 224 18% 16%;
+    --secondary-foreground: 220 14% 96%;
+
+    --muted: 224 18% 16%;
+    --muted-foreground: 220 9% 60%;
+
+    --accent: 243 40% 20%;
+    --accent-foreground: 243 80% 80%;
+
+    --destructive: 0 62% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 50% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 85% 55%;
+    --warning-foreground: 224 24% 7%;
+
+    --border: 224 16% 20%;
+    --input: 224 16% 20%;
+    --ring: 243 80% 67%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full border-[3px] border-solid border-transparent bg-border bg-clip-content;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40 bg-clip-content;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-muted;
+  }
+
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-background/60 to-transparent;
+    content: '';
+    animation: shimmer 1.6s infinite;
+  }
+}
