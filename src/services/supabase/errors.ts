@@ -22,9 +22,25 @@ const AUTH_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Email o contraseña incorrectos.',
   email_not_confirmed: 'Confirma tu email antes de entrar.',
   user_already_exists: 'Ya existe una cuenta con este email.',
+  email_exists: 'Ya existe una cuenta con este email.',
   weak_password: 'La contraseña es demasiado débil.',
+  email_address_invalid: 'Ese email no es válido. Usa una dirección real.',
   over_email_send_rate_limit: 'Demasiados intentos. Espera un minuto.',
+  over_request_rate_limit: 'Demasiados intentos. Espera un minuto.',
+  signup_disabled: 'El registro está desactivado ahora mismo.',
+  validation_failed: 'Revisa los datos que has introducido.',
 }
+
+/** Supabase returns some auth errors as English prose without a code. */
+const AUTH_MESSAGE_PATTERNS: [RegExp, string][] = [
+  [/invalid login credentials/i, 'Email o contraseña incorrectos.'],
+  [/email address .* is invalid/i, 'Ese email no es válido. Usa una dirección real.'],
+  [/email not confirmed/i, 'Confirma tu email antes de entrar.'],
+  [/already registered|already exists/i, 'Ya existe una cuenta con este email.'],
+  [/password should be at least/i, 'La contraseña es demasiado corta.'],
+  [/rate limit|too many requests/i, 'Demasiados intentos. Espera un minuto.'],
+  [/failed to fetch|network/i, 'No hemos podido conectar. Revisa tu conexión.'],
+]
 
 export function toAppError(error: unknown, fallback: string): AppError {
   if (error instanceof AppError) return error
@@ -36,9 +52,10 @@ export function toAppError(error: unknown, fallback: string): AppError {
   if (isAuthError(error)) {
     const known = error.code ? AUTH_MESSAGES[error.code] : undefined
     if (known) return new AppError(known, error)
-    if (error.message.toLowerCase().includes('invalid login credentials')) {
-      return new AppError(AUTH_MESSAGES.invalid_credentials, error)
-    }
+
+    const matched = AUTH_MESSAGE_PATTERNS.find(([pattern]) => pattern.test(error.message))
+    if (matched) return new AppError(matched[1], error)
+
     return new AppError(error.message || fallback, error)
   }
 
