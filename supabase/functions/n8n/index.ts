@@ -34,6 +34,14 @@ import {
 const CALLBACK_URL = `${Deno.env.get('SUPABASE_URL')}/functions/v1/n8n-callback`
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
+/** Datos de muestra para el botón "Probar ahora". */
+const SAMPLE_CONTACT = {
+  name: 'Contacto de prueba',
+  email: 'prueba@sinaptkis.io',
+  phone: '+34600000000',
+  channel: 'web',
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -175,7 +183,11 @@ async function executeOnce(
     )
   }
 
+  // Una prueba sin datos crearía un contacto vacío en el CRM cada vez que el
+  // usuario pulsa el botón. Se rellena con un contacto de muestra reconocible:
+  // como `crear_lead` deduplica por email, probar diez veces deja uno solo.
   await n8n.trigger(webhookPathFor({ id: stored.id }), {
+    ...SAMPLE_CONTACT,
     ...payload,
     businessId,
     source: 'prueba_manual',
