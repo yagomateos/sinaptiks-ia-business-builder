@@ -154,6 +154,8 @@ function buildActionNode(
     }
   }
 
+  const isLastStep = index === automation.actions.length - 1
+
   return {
     id: `action_${index}`,
     name: `${index + 1}. ${action.description}`,
@@ -164,24 +166,48 @@ function buildActionNode(
       method: 'POST',
       url: callbackUrl,
       sendHeaders: true,
+      specifyHeaders: 'keypair',
+      // La colección interna se llama `parameters` (plural). En singular n8n
+      // no da error: acepta el nodo y lo guarda sin cabeceras, con lo que la
+      // llamada de vuelta acaba rechazada por falta del secreto.
       headerParameters: {
-        parameter: [{ name: 'x-sinaptkis-secret', value: callbackSecret }],
+        parameters: [{ name: 'x-sinaptkis-secret', value: callbackSecret }],
       },
       sendBody: true,
       specifyBody: 'json',
-      jsonBody: JSON.stringify({
-        automationId: automation.id,
-        businessId: automation.business_id,
-        actionType: action.type,
-        actionConfig: action.config,
-        stepIndex: index,
-        isLastStep: index === automation.actions.length - 1,
-        // Lo que trajo el disparador, para que la acción tenga contexto.
-        payload: '={{ $json }}',
-      }),
+      // Todo el campo tiene que ser una expresión (prefijo `=`) para que n8n
+      // evalúe el `{{ }}` de dentro. Un `{{ }}` suelto dentro de un JSON fijo
+      // viaja como texto literal.
+      jsonBody: buildCallbackBody(automation, action, index, isLastStep),
       options: { timeout: 15000 },
     },
   }
+}
+
+/**
+ * Cuerpo de la llamada de vuelta: JSON literal salvo `payload`, que trae lo
+ * que entregó el disparador (el mensaje entrante, el lead, lo que sea).
+ */
+function buildCallbackBody(
+  automation: AutomationRecord,
+  action: AutomationAction,
+  index: number,
+  isLastStep: boolean,
+): string {
+  const fields = [
+    `"automationId":${JSON.stringify(automation.id)}`,
+    `"businessId":${JSON.stringify(automation.business_id)}`,
+    `"actionType":${JSON.stringify(action.type)}`,
+    `"actionConfig":${JSON.stringify(action.config ?? {})}`,
+    `"stepIndex":${index}`,
+    `"isLastStep":${isLastStep}`,
+    // El nodo webhook no entrega el cuerpo tal cual: lo envuelve junto a las
+    // cabeceras y la query en `body`. Los disparadores programados no tienen
+    // `body`, así que se cae a `$json`.
+    `"payload":{{ JSON.stringify($json.body || $json) }}`,
+  ]
+
+  return `={${fields.join(',')}}`
 }
 
 /* ------------------------------------------------------------------ */
