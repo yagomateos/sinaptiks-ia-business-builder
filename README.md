@@ -11,6 +11,22 @@ de ejecución.
 
 ---
 
+## Capturas
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.jpg) **Dashboard** — estado del sistema, actividad reciente y alertas de lo que falta configurar. | ![Automatizaciones](docs/screenshots/automatizaciones.jpg) **Automatizaciones** — las que el generador propuso para este negocio, con su categoría y estado. |
+| ![Agentes IA](docs/screenshots/agentes.jpg) **Agentes IA** — Recepcionista, Comercial y Seguimiento, cada uno con sus canales. | ![Clientes](docs/screenshots/clientes-lista.jpg) **Clientes** — con el potencial calculado de cada conversación. |
+| ![Pipeline](docs/screenshots/clientes-pipeline.jpg) **Pipeline** — arrastra un contacto entre etapas; la puntuación viaja con él. | ![Resultados](docs/screenshots/resultados.jpg) **Resultados** — leads, conversión, ejecuciones y tiempo ahorrado. |
+
+**Simulador de conversación**, en `/app/clientes/simulador`: se habla como lo
+haría un cliente, el agente responde con los precios reales del negocio, y el
+potencial se recalcula mensaje a mensaje.
+
+![Simulador de conversación](docs/screenshots/simulador.jpg)
+
+---
+
 ## El recorrido
 
 ```
