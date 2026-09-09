@@ -154,7 +154,9 @@ export const INTEGRATION_DESCRIPTIONS: Record<IntegrationProvider, string> = {
 
 export const INTEGRATION_STATUS_LABELS: Record<IntegrationStatus, string> = {
   no_conectado: 'No conectado',
-  conectando: 'Conectando',
+  // No es un "conectando" con final: la conexión real llega cuando ese canal
+  // esté disponible. Decir "Conectando" indefinidamente parece un fallo.
+  conectando: 'En espera',
   conectado: 'Conectado',
   error: 'Error',
 }

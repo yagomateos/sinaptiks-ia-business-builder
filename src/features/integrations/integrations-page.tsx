@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, ErrorState } from '@/components/shared/states'
 import { integrationsRepository } from '@/services/repositories/integrations.repository'
+import { isN8nLive } from '@/services/n8n'
 import {
   INTEGRATION_DESCRIPTIONS,
   INTEGRATION_LABELS,
@@ -144,8 +145,16 @@ function IntegrationCard({
   businessId: string
 }) {
   const queryClient = useQueryClient()
-  const status = integration?.status ?? 'no_conectado'
   const Icon = PROVIDER_ICONS[provider]
+
+  // El motor lo configura la plataforma, no cada negocio: su estado real es si
+  // hay backend detrás, no lo que diga la fila de la base de datos.
+  const isEngine = provider === 'n8n'
+  const status: IntegrationStatus = isEngine
+    ? isN8nLive
+      ? 'conectado'
+      : 'no_conectado'
+    : (integration?.status ?? 'no_conectado')
 
   const connect = useMutation({
     mutationFn: async () => {
@@ -191,21 +200,34 @@ function IntegrationCard({
         {integration?.last_error && (
           <p className="mt-2 text-xs text-destructive">{integration.last_error}</p>
         )}
+        {status === 'conectando' && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Te avisaremos en cuanto esté disponible.
+          </p>
+        )}
       </div>
 
-      <Button
-        variant={status === 'conectado' ? 'outline' : 'default'}
-        size="sm"
-        className="mt-4 w-full"
-        loading={connect.isPending}
-        onClick={() => connect.mutate()}
-      >
-        {status === 'conectado'
-          ? 'Desconectar'
-          : status === 'conectando'
-            ? 'Cancelar solicitud'
-            : 'Conectar'}
-      </Button>
+      {isEngine ? (
+        <p className="mt-4 rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+          {isN8nLive
+            ? 'Lo gestiona Sinaptkis. Tus automatizaciones ya se ejecutan de verdad.'
+            : 'Lo gestiona Sinaptkis. Todavía no está activo en tu cuenta.'}
+        </p>
+      ) : (
+        <Button
+          variant={status === 'conectado' ? 'outline' : 'default'}
+          size="sm"
+          className="mt-4 w-full"
+          loading={connect.isPending}
+          onClick={() => connect.mutate()}
+        >
+          {status === 'conectado'
+            ? 'Desconectar'
+            : status === 'conectando'
+              ? 'Quitar de la lista'
+              : 'Conectar'}
+        </Button>
+      )}
     </Card>
   )
 }
