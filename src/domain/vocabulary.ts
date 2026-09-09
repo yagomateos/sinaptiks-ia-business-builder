@@ -57,6 +57,7 @@ export const GOAL_DESCRIPTIONS: Record<BusinessGoal, string> = {
 
 export const CHANNEL_LABELS: Record<ContactChannel, string> = {
   whatsapp: 'WhatsApp',
+  telegram: 'Telegram',
   web: 'Web',
   instagram: 'Instagram',
   facebook: 'Facebook',
@@ -125,6 +126,7 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
 export const INTEGRATION_LABELS: Record<IntegrationProvider, string> = {
   n8n: 'Motor de automatización',
   whatsapp: 'WhatsApp Business',
+  telegram: 'Telegram',
   google_calendar: 'Google Calendar',
   gmail: 'Gmail',
   instagram: 'Instagram',
@@ -140,6 +142,7 @@ export const INTEGRATION_LABELS: Record<IntegrationProvider, string> = {
 export const INTEGRATION_DESCRIPTIONS: Record<IntegrationProvider, string> = {
   n8n: 'Ejecuta tus automatizaciones en segundo plano',
   whatsapp: 'Recibe y responde mensajes de WhatsApp',
+  telegram: 'Recibe y responde mensajes de Telegram',
   google_calendar: 'Crea y consulta citas en tu calendario',
   gmail: 'Envía correos desde tu cuenta',
   instagram: 'Gestiona mensajes directos de Instagram',

@@ -25,8 +25,9 @@ import {
   type LeadTemperature,
 } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
+import { PotentialBadge, PotentialBar } from './potential-badge'
 import { useEditableDraft } from '@/hooks/use-editable-draft'
-import { formatRelative } from '@/lib/utils'
+import { cn, formatRelative } from '@/lib/utils'
 
 export function LeadDetailPage() {
   const { leadId = '' } = useParams()
@@ -250,6 +251,32 @@ export function LeadDetailPage() {
             </CardContent>
           </Card>
 
+          {draft.potential_label && draft.potential_score !== null && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Potencial</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="flex items-end justify-between">
+                    <span className="text-3xl font-semibold tabular-nums">
+                      {draft.potential_score}
+                    </span>
+                    <PotentialBadge label={draft.potential_label} />
+                  </div>
+                  <div className="mt-2">
+                    <PotentialBar score={draft.potential_score} />
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Valorado {formatRelative(draft.scored_at)}
+                  </p>
+                </div>
+
+                <ScoreReasons signals={draft.score_signals} />
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Historial</CardTitle>
@@ -267,6 +294,43 @@ export function LeadDetailPage() {
           </Card>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Las razones se guardaron como jsonb, así que llegan sin tipo. Se valida la
+ * forma antes de pintarlas: una fila corrupta no debería romper la ficha.
+ */
+function ScoreReasons({ signals }: { signals: Record<string, unknown> | null }) {
+  const raw = Array.isArray(signals?.reasons) ? signals.reasons : []
+  const reasons = raw.filter(
+    (r): r is { label: string; points: number } =>
+      typeof r === 'object' &&
+      r !== null &&
+      typeof (r as { label?: unknown }).label === 'string' &&
+      typeof (r as { points?: unknown }).points === 'number',
+  )
+
+  if (reasons.length === 0) return null
+
+  return (
+    <div className="space-y-1.5 border-t pt-3">
+      <p className="text-xs font-medium text-muted-foreground">Por qué</p>
+      {reasons.map((r) => (
+        <div key={r.label} className="flex items-start justify-between gap-3 text-xs">
+          <span className="text-muted-foreground">{r.label}</span>
+          <span
+            className={cn(
+              'shrink-0 font-medium tabular-nums',
+              r.points > 0 ? 'text-success' : 'text-destructive',
+            )}
+          >
+            {r.points > 0 ? '+' : ''}
+            {r.points}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }

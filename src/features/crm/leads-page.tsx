@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Columns3, List, Plus, Search, Users } from 'lucide-react'
+import { Columns3, List, MessagesSquare, Plus, Search, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import { LEAD_STAGE_LABELS } from '@/domain/vocabulary'
 import { LEAD_STAGES, type Lead, type LeadStage } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
 import { TemperatureDot } from '@/features/dashboard/dashboard-page'
+import { PotentialBadge } from './potential-badge'
 import { formatRelative } from '@/lib/utils'
 
 type View = 'lista' | 'kanban'
@@ -58,10 +59,18 @@ export function LeadsPage() {
         title="Clientes"
         description="Todos tus contactos y en qué punto está cada uno."
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus />
-            Añadir contacto
-          </Button>
+          <>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/app/clientes/simulador">
+                <MessagesSquare />
+                Simular conversación
+              </Link>
+            </Button>
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus />
+              Añadir contacto
+            </Button>
+          </>
         }
       />
 
@@ -162,6 +171,10 @@ function LeadsList({ leads }: { leads: Lead[] }) {
             </p>
           </div>
 
+          {lead.potential_label && (
+            <PotentialBadge label={lead.potential_label} score={lead.potential_score} />
+          )}
+
           <span className="hidden shrink-0 text-xs text-muted-foreground md:block">
             {formatRelative(lead.last_contacted_at ?? lead.created_at)}
           </span>
@@ -230,6 +243,14 @@ function LeadsKanban({ leads, businessId }: { leads: Lead[]; businessId: string 
                     <p className="mt-1 truncate text-xs text-muted-foreground">
                       {lead.email ?? lead.phone ?? 'Sin contacto'}
                     </p>
+                    {lead.potential_label && (
+                      <div className="mt-2">
+                        <PotentialBadge
+                          label={lead.potential_label}
+                          score={lead.potential_score}
+                        />
+                      </div>
+                    )}
                     {lead.next_action && (
                       <p className="mt-2 truncate text-[11px] text-primary">{lead.next_action}</p>
                     )}

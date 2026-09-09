@@ -82,6 +82,7 @@ export type BusinessGoal = (typeof BUSINESS_GOALS)[number]
 
 export const CONTACT_CHANNELS = [
   'whatsapp',
+  'telegram',
   'web',
   'instagram',
   'facebook',
@@ -175,6 +176,20 @@ export type LeadStage = (typeof LEAD_STAGES)[number]
 export const LEAD_TEMPERATURES = ['frio', 'templado', 'caliente'] as const
 export type LeadTemperature = (typeof LEAD_TEMPERATURES)[number]
 
+/**
+ * Cuánto potencial tiene un contacto según su conversación. Más granular que
+ * `temperature` a propósito: el dueño necesita distinguir "merece una llamada
+ * hoy" de "merece una llamada", y `temperature` se queda corto.
+ */
+export const POTENTIAL_LABELS = [
+  'descartado',
+  'frio',
+  'templado',
+  'caliente',
+  'muy_caliente',
+] as const
+export type PotentialLabel = (typeof POTENTIAL_LABELS)[number]
+
 export interface Lead {
   id: UUID
   business_id: UUID
@@ -190,6 +205,12 @@ export interface Lead {
   next_action: string | null
   next_action_at: ISODate | null
   assigned_agent_id: UUID | null
+  /** 0–100. Null mientras no haya habido conversación que medir. */
+  potential_score: number | null
+  potential_label: PotentialLabel | null
+  scored_at: ISODate | null
+  /** Qué llevó a esa puntuación, para poder explicársela al usuario. */
+  score_signals: Record<string, unknown> | null
   created_at: ISODate
   updated_at: ISODate
 }
@@ -399,6 +420,7 @@ export const INTEGRATION_PROVIDERS = [
   'gmail',
   'instagram',
   'facebook',
+  'telegram',
   'stripe',
   'openai',
   'anthropic',

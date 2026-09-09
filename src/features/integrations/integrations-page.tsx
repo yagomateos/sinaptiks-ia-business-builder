@@ -8,6 +8,7 @@ import {
   Database,
   MessageCircle,
   Mic,
+  Send,
   Server,
   ThumbsUp,
   Workflow,
@@ -38,6 +39,7 @@ import { formatRelative } from '@/lib/utils'
 const PROVIDER_ICONS: Record<IntegrationProvider, LucideIcon> = {
   n8n: Workflow,
   whatsapp: MessageCircle,
+  telegram: Send,
   google_calendar: Calendar,
   gmail: AtSign,
   instagram: Camera,

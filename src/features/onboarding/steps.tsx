@@ -6,6 +6,7 @@ import {
   MessageCircle,
   Phone,
   Plus,
+  Send,
   ThumbsUp,
   Trash2,
 } from 'lucide-react'
@@ -340,6 +341,7 @@ export function StepGoals({ draft, update }: StepProps) {
 
 const CHANNEL_ICONS: Record<ContactChannel, LucideIcon> = {
   whatsapp: MessageCircle,
+  telegram: Send,
   web: Globe,
   instagram: Camera,
   facebook: ThumbsUp,

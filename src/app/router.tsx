@@ -50,6 +50,11 @@ const LeadsPage = lazy(() =>
 const LeadDetailPage = lazy(() =>
   import('@/features/crm/lead-detail-page').then((m) => ({ default: m.LeadDetailPage })),
 )
+const ConversationSimulatorPage = lazy(() =>
+  import('@/features/crm/conversation-simulator-page').then((m) => ({
+    default: m.ConversationSimulatorPage,
+  })),
+)
 const ConversationsPage = lazy(() =>
   import('@/features/conversations/conversations-page').then((m) => ({
     default: m.ConversationsPage,
@@ -215,6 +220,14 @@ export const router = createBrowserRouter([
                 element: (
                   <Lazy>
                     <LeadsPage />
+                  </Lazy>
+                ),
+              },
+              {
+                path: 'clientes/simulador',
+                element: (
+                  <Lazy>
+                    <ConversationSimulatorPage />
                   </Lazy>
                 ),
               },
