@@ -33,6 +33,10 @@ export function AdminPage() {
     queryKey: ['admin-users'],
     queryFn: () => adminRepository.listUsers(),
   })
+  const errorsQuery = useQuery({
+    queryKey: ['admin-recent-errors'],
+    queryFn: () => adminRepository.listRecentErrors(),
+  })
 
   const stats = statsQuery.data
 
@@ -111,7 +115,46 @@ export function AdminPage() {
           <TabsList>
             <TabsTrigger value="negocios">Negocios</TabsTrigger>
             <TabsTrigger value="usuarios">Usuarios</TabsTrigger>
+            <TabsTrigger value="errores">
+              Errores recientes
+              {(errorsQuery.data?.length ?? 0) > 0 && (
+                <Badge variant="destructive" className="ml-1.5">
+                  {errorsQuery.data!.length}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="errores">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Últimos fallos de automatización</CardTitle>
+              </CardHeader>
+              <CardContent className="divide-y">
+                {(errorsQuery.data ?? []).map((err) => (
+                  <div key={err.id} className="py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-medium">
+                        {err.automation_name}
+                        <span className="font-normal text-muted-foreground"> · {err.business_name}</span>
+                      </p>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {formatRelative(err.started_at)}
+                      </span>
+                    </div>
+                    {err.error_message && (
+                      <p className="mt-1 text-xs text-destructive">{err.error_message}</p>
+                    )}
+                  </div>
+                ))}
+                {(errorsQuery.data ?? []).length === 0 && (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Sin fallos recientes en ningún negocio.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="negocios">
             <Card>
