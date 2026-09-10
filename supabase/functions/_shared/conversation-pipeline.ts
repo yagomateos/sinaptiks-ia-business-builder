@@ -497,9 +497,17 @@ export async function respondWithAgent(
   if (isAnthropicConfigured && agent.system_prompt) {
     try {
       const relevantKnowledge = await searchKnowledge(admin, businessId, input.incomingText)
-      const system = relevantKnowledge
-        ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
-        : agent.system_prompt
+      // El prompt del negocio suele traer ya su propio guion de despedida
+      // ("el equipo te escribirá") — sin este empujón, el modelo se queda
+      // satisfecho con decirlo en texto y nunca llega a llamar a la
+      // herramienta, que es lo único que avisa de verdad. La descripción de
+      // la herramienta sola no basta para competir con un guion completo ya
+      // escrito en el prompt.
+      const system = `${agent.system_prompt}${
+        relevantKnowledge
+          ? `\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
+          : ''
+      }\n\n---\n\nEn cuanto tengas el servicio, la fecha/hora preferida y un teléfono o email de contacto, llama a la herramienta registrar_solicitud_cita antes de despedirte — decirlo en el texto no avisa a nadie de verdad, solo la llamada a la herramienta lo hace.`
 
       const tools = [REGISTER_APPOINTMENT_TOOL]
       const first = await completeWithTools({
