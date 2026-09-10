@@ -8,6 +8,7 @@
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { complete, isAnthropicConfigured } from './anthropic-client.ts'
+import { scoreLead, type ScoredMessage } from './lead-scoring.ts'
 
 export interface ContactFields {
   name?: unknown
@@ -110,6 +111,43 @@ export async function searchKnowledge(
   return ranked.map((r) => r.content).join('\n\n')
 }
 
+/**
+ * Puntúa al contacto con el mismo motor que usa el simulador y guarda el
+ * resultado en su ficha. Se llama en cada mensaje real, no solo al guardar
+ * manualmente desde el simulador — así una conversación de Telegram que se
+ * enfría o se calienta se refleja sola en el CRM.
+ */
+async function scoreAndSaveLead(
+  admin: SupabaseClient,
+  leadId: string,
+  history: { role: string; content: string; created_at: string }[],
+  channel: string,
+): Promise<void> {
+  const messages: ScoredMessage[] = history
+    .filter((m) => m.role === 'contacto' || m.role === 'agente_ia' || m.role === 'humano')
+    .map((m) => ({
+      role: m.role as ScoredMessage['role'],
+      content: m.content,
+      created_at: m.created_at,
+    }))
+
+  if (messages.every((m) => m.role !== 'contacto')) return
+
+  const score = scoreLead({ messages, channel })
+
+  await admin
+    .from('leads')
+    .update({
+      potential_score: score.score,
+      potential_label: score.label,
+      temperature: score.temperature,
+      scored_at: new Date().toISOString(),
+      score_signals: { reasons: score.reasons, ...score.signals },
+      last_contacted_at: new Date().toISOString(),
+    })
+    .eq('id', leadId)
+}
+
 export interface AgentReplyResult {
   conversationId: string
   leadId: string
@@ -174,6 +212,18 @@ export async function respondWithAgent(
     })
   }
 
+  const { data: history } = await admin
+    .from('messages')
+    .select('role, content, created_at')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+    .limit(20)
+
+  // Se puntúa aquí, no solo en el simulador: cada mensaje real por Telegram o
+  // n8n mueve la valoración del contacto igual que lo haría un mensaje de
+  // prueba, con independencia de si hay un agente que además le responda.
+  await scoreAndSaveLead(admin, leadId, history ?? [], input.channel)
+
   // Siempre exigiendo que el agente esté activo — si el que corresponde está
   // en pausa, no se sustituye por otro de un tipo distinto, que respondería
   // con la personalidad y el objetivo equivocados.
@@ -199,13 +249,6 @@ export async function respondWithAgent(
   if (!agent?.system_prompt) {
     return { conversationId, leadId, reply: null, reason: 'Sin agente activo que responda' }
   }
-
-  const { data: history } = await admin
-    .from('messages')
-    .select('role, content')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
-    .limit(20)
 
   const claudeMessages = (history ?? [])
     .filter((m: { role: string }) => m.role !== 'sistema')
