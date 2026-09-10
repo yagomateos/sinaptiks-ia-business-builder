@@ -226,6 +226,7 @@ function scoreAgents(
 /* ------------------------------------------------------------------ */
 
 const CHANNEL_INTEGRATIONS: Partial<Record<ContactChannel, IntegrationProvider>> = {
+  telegram: 'telegram',
   whatsapp: 'whatsapp',
   instagram: 'instagram',
   facebook: 'facebook',

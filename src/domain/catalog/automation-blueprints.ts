@@ -130,10 +130,10 @@ export const AUTOMATION_BLUEPRINTS: AutomationBlueprint[] = [
       config: { offset_hours: -24 },
     },
     actions: [
-      { type: 'enviar_whatsapp', description: 'Recordatorio por WhatsApp', config: {} },
+      { type: 'enviar_telegram', description: 'Recordatorio por Telegram', config: {} },
     ],
     goals: ['mas_reservas', 'reducir_admin'],
-    requiresAnyChannel: ['whatsapp', 'email', 'telefono'],
+    requiresAnyChannel: ['telegram', 'email', 'telefono'],
     requiredIntegrations: ['n8n'],
     boostIndustries: ['clinica', 'psicologo', 'peluqueria', 'gimnasio', 'restaurante'],
     baseScore: 7,
@@ -191,7 +191,7 @@ export const AUTOMATION_BLUEPRINTS: AutomationBlueprint[] = [
       config: { cron: 'monthly', inactive_days: 90 },
     },
     actions: [
-      { type: 'enviar_whatsapp', description: 'Propuesta personalizada', config: {} },
+      { type: 'enviar_telegram', description: 'Propuesta personalizada', config: {} },
     ],
     goals: ['recuperar_clientes', 'automatizar_marketing', 'mas_reservas'],
     requiredIntegrations: ['n8n'],

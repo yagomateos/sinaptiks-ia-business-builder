@@ -61,13 +61,22 @@ const STATUS_VARIANTS: Record<IntegrationStatus, 'outline' | 'secondary' | 'succ
 
 /** Providers a business owner sets up directly. The rest are platform-level. */
 const CUSTOMER_FACING: IntegrationProvider[] = [
-  'whatsapp',
+  'telegram',
   'gmail',
   'google_calendar',
   'instagram',
   'facebook',
   'stripe',
 ]
+
+/**
+ * WhatsApp exige verificación de empresa con Meta — un trámite que solo puede
+ * iniciar el propio negocio, no algo que se resuelva con código. Se oculta
+ * del marketplace mientras tanto: mostrar una tarjeta que nadie puede
+ * completar hoy no ayuda a nadie. Sigue existiendo como proveedor válido —
+ * basta con quitarlo de aquí cuando se retome.
+ */
+const HIDDEN_FOR_NOW: IntegrationProvider[] = ['whatsapp']
 
 export function IntegrationsPage() {
   const { activeBusiness } = useBusiness()
@@ -83,7 +92,9 @@ export function IntegrationsPage() {
   const byProvider = new Map(integrations.map((i) => [i.provider, i]))
 
   const channels = CUSTOMER_FACING
-  const platform = INTEGRATION_PROVIDERS.filter((p) => !CUSTOMER_FACING.includes(p))
+  const platform = INTEGRATION_PROVIDERS.filter(
+    (p) => !CUSTOMER_FACING.includes(p) && !HIDDEN_FOR_NOW.includes(p),
+  )
 
   return (
     <div className="space-y-8">

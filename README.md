@@ -38,9 +38,9 @@ servicios con precios, objetivos y canales. Con eso el generador decide qué
 automatizaciones, agentes, pipeline y conexiones necesita ese negocio concreto,
 y los crea.
 
-Una clínica dental que marca *captar clientes*, *WhatsApp* y *reservas* recibe 8
+Una clínica dental que marca *captar clientes*, *Telegram* y *reservas* recibe 8
 automatizaciones, 3 agentes (Recepcionista, Comercial, Seguimiento), pipeline
-con etapa de cita, y WhatsApp + Calendar + Gmail. Un ecommerce con los mismos
+con etapa de cita, y Telegram + Calendar + Gmail. Un ecommerce con los mismos
 objetivos recibe algo distinto.
 
 ---
@@ -179,10 +179,19 @@ cuerpo de la petición, para que el cliente no pueda inventarse acciones.
 | Actualizar contacto | ✅ real |
 | Avisar al equipo | ✅ real |
 | Esperar X horas | ✅ real (lo hace n8n) |
-| WhatsApp / email / agendar cita | registra el paso, no envía |
+| Agente responde | ✅ real — crea la conversación, consulta lo que subiste a Conocimiento, y responde con Claude si hay clave configurada |
+| Telegram / email / agendar cita | registra el paso, no envía todavía |
 
 Las últimas no envían nada a propósito: sin esos canales conectados, es
 preferible dejar constancia del paso a fingir un mensaje que nadie recibe.
+
+### Canal de mensajería: Telegram, no WhatsApp
+
+El canal principal es **Telegram** — solo necesita un token de bot (gratis, en
+segundos, con [@BotFather](https://t.me/BotFather)), sin verificación de
+empresa. WhatsApp Business API exige ese trámite con Meta, así que queda fuera
+del marketplace por ahora; sigue siendo un proveedor válido en el modelo de
+datos, listo para cuando se retome.
 
 ---
 

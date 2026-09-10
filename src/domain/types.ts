@@ -81,8 +81,8 @@ export const BUSINESS_GOALS = [
 export type BusinessGoal = (typeof BUSINESS_GOALS)[number]
 
 export const CONTACT_CHANNELS = [
-  'whatsapp',
   'telegram',
+  'whatsapp',
   'web',
   'instagram',
   'facebook',
@@ -288,6 +288,7 @@ export interface AutomationTrigger {
 
 export interface AutomationAction {
   type:
+    | 'enviar_telegram'
     | 'enviar_whatsapp'
     | 'enviar_email'
     | 'crear_lead'
@@ -415,12 +416,12 @@ export interface KnowledgeChunk {
 
 export const INTEGRATION_PROVIDERS = [
   'n8n',
+  'telegram',
   'whatsapp',
   'google_calendar',
   'gmail',
   'instagram',
   'facebook',
-  'telegram',
   'stripe',
   'openai',
   'anthropic',

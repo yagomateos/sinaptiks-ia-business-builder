@@ -197,6 +197,7 @@ async function performAction(body: CallbackBody, automationName: string): Promis
 }
 
 const ACTION_DESCRIPTIONS: Record<string, string> = {
+  enviar_telegram: 'mensaje de Telegram pendiente de enviar',
   enviar_whatsapp: 'mensaje de WhatsApp pendiente de enviar',
   enviar_email: 'email pendiente de enviar',
   agendar_cita: 'cita pendiente de agendar',

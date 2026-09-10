@@ -50,8 +50,8 @@ import { PotentialBadge, PotentialBar } from './potential-badge'
 
 /** Canales donde tiene sentido una conversación de ida y vuelta. */
 const SIMULATABLE_CHANNELS: ContactChannel[] = [
-  'whatsapp',
   'telegram',
+  'whatsapp',
   'telefono',
   'web',
   'instagram',
@@ -67,7 +67,7 @@ export function ConversationSimulatorPage() {
   const businessId = activeBusiness?.id ?? ''
   const navigate = useNavigate()
 
-  const [channel, setChannel] = useState<ContactChannel>('whatsapp')
+  const [channel, setChannel] = useState<ContactChannel>('telegram')
   const [agentId, setAgentId] = useState<string>('')
   const [messages, setMessages] = useState<SimMessage[]>([])
   const [draft, setDraft] = useState('')

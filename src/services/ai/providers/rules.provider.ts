@@ -43,10 +43,10 @@ export const rulesProvider: AiService = {
       opportunities.push('Añade tus servicios y precios para que los agentes puedan responder sin derivar cada consulta.')
     }
 
-    if (profile.contact_channels.includes('whatsapp')) {
-      strengths.push('Usas WhatsApp, el canal donde la respuesta inmediata más convierte.')
+    if (profile.contact_channels.includes('telegram') || profile.contact_channels.includes('whatsapp')) {
+      strengths.push('Usas mensajería instantánea, el canal donde la respuesta inmediata más convierte.')
     } else {
-      opportunities.push('Activar WhatsApp suele ser la vía más rápida para captar y responder.')
+      opportunities.push('Activar Telegram suele ser la vía más rápida para captar y responder.')
     }
 
     if (profile.ideal_customer) {
