@@ -138,23 +138,40 @@ export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>(
  * vacío o solo con `channels`), o cuando la intención es "escalado" (ahí la
  * señal ya la calcula `detectHandoff`, así que reutilizarla es gratis). Con
  * intención "reserva" o "faq" seguiría necesitando clasificar el mensaje, que
- * todavía no existe, así que esos siguen sin disparar solos. `cambio_estado`,
- * `programado` e `inactividad` no tienen ningún camino conectado todavía.
+ * todavía no existe, así que esos siguen sin disparar solos.
  *
- * Un paso `responder_ia` tampoco dispara aquí aunque el resto encaje: ese
- * mismo pipeline ya genera la respuesta directa a cada mensaje, así que
- * lanzarlo también por la automatización duplicaría la respuesta. Debe
- * coincidir con la exclusión de `fireImmediateIncomingMessageAutomations` en
- * `supabase/functions/_shared/conversation-pipeline.ts`.
+ * `cambio_estado` dispara de verdad desde el trigger de Postgres
+ * `notify_stage_change_automations` (migración `automation_stage_dispatch`),
+ * salvo que tenga `delay_hours` — el disparo ahí es inmediato, no hay
+ * infraestructura todavía para esperar antes de lanzarlo.
+ *
+ * `programado` e `inactividad` no tienen ningún camino conectado todavía
+ * (necesitan un cron).
+ *
+ * Un paso `responder_ia` tampoco dispara en ninguno de los dos casos
+ * conectados: `mensaje_entrante` duplicaría la respuesta que este mismo
+ * pipeline ya genera para cada mensaje, y `cambio_estado` no trae ningún
+ * mensaje real al que responder — respondWithAgent caería a su "Hola" de
+ * respaldo y generaría una respuesta inventada. Debe coincidir con las
+ * exclusiones reales en `conversation-pipeline.ts` y en la migración
+ * `automation_stage_dispatch`.
  */
 export function isAutomationTriggerConnected(
   trigger: { type: string; config: Record<string, unknown> },
   actions: AutomationAction[],
 ): boolean {
-  if (trigger.type !== 'mensaje_entrante') return false
   if (actions.some((a) => a.type === 'responder_ia')) return false
-  const intent = trigger.config.intent
-  return !intent || intent === 'escalado'
+
+  if (trigger.type === 'mensaje_entrante') {
+    const intent = trigger.config.intent
+    return !intent || intent === 'escalado'
+  }
+
+  if (trigger.type === 'cambio_estado') {
+    return !trigger.config.delay_hours
+  }
+
+  return false
 }
 
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {

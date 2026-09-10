@@ -45,8 +45,30 @@ describe('isAutomationTriggerConnected', () => {
     ).toBe(false)
   })
 
-  it('is not connected for any other trigger type', () => {
-    expect(isAutomationTriggerConnected({ type: 'cambio_estado', config: {} }, [])).toBe(false)
+  it('is connected for cambio_estado without delay_hours', () => {
+    expect(
+      isAutomationTriggerConnected({ type: 'cambio_estado', config: { to: 'cualificado' } }, []),
+    ).toBe(true)
+  })
+
+  it('is not connected for cambio_estado with delay_hours — no dispatch infra for delay yet', () => {
+    expect(
+      isAutomationTriggerConnected(
+        { type: 'cambio_estado', config: { to: 'cliente', delay_hours: 24 } },
+        [],
+      ),
+    ).toBe(false)
+  })
+
+  it('is not connected for cambio_estado with a responder_ia step — no real message to reply to', () => {
+    expect(
+      isAutomationTriggerConnected({ type: 'cambio_estado', config: { to: 'contactado' } }, [
+        action('responder_ia'),
+      ]),
+    ).toBe(false)
+  })
+
+  it('is not connected for programado or inactividad — no cron yet', () => {
     expect(isAutomationTriggerConnected({ type: 'programado', config: {} }, [])).toBe(false)
     expect(isAutomationTriggerConnected({ type: 'inactividad', config: {} }, [])).toBe(false)
   })
