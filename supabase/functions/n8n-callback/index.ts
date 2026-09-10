@@ -311,6 +311,42 @@ async function findOrCreateLead(
   return { id: data.id, created: true }
 }
 
+/**
+ * Búsqueda por palabras clave sobre los documentos que el negocio ha subido y
+ * procesado en "Conocimiento". Es la misma estrategia de respaldo que usa el
+ * frontend mientras no haya una base vectorial real conectada (Qdrant): sin
+ * un motor de embeddings de por medio, coincidencia de palabras es lo que hay
+ * — mejor esto que un agente que nunca lea lo que el negocio le dio.
+ */
+async function searchKnowledge(businessId: string, query: string): Promise<string | null> {
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 3)
+
+  if (terms.length === 0) return null
+
+  const { data } = await admin
+    .from('knowledge_chunks')
+    .select('content')
+    .eq('business_id', businessId)
+    .or(terms.map((t) => `content.ilike.%${t}%`).join(','))
+    .limit(12)
+
+  if (!data || data.length === 0) return null
+
+  const ranked = data
+    .map((row) => {
+      const content = row.content.toLowerCase()
+      const hits = terms.filter((t) => content.includes(t)).length
+      return { content: row.content as string, score: hits / terms.length }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+
+  return ranked.map((r) => r.content).join('\n\n')
+}
+
 /* ------------------------------------------------------------------ */
 /* Respuesta de un agente                                              */
 /* ------------------------------------------------------------------ */
@@ -411,8 +447,16 @@ async function respondWithAgent(
     claudeMessages.push({ role: 'user', content: incomingText || 'Hola' })
   }
 
+  // Lo que suba el negocio a "Conocimiento" tiene que servir para algo: se
+  // añade al prompt solo para esta respuesta, sin tocar el system_prompt
+  // guardado del agente, que sigue siendo el que se ve y se edita en su ficha.
+  const relevantKnowledge = await searchKnowledge(businessId, incomingText)
+  const system = relevantKnowledge
+    ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
+    : agent.system_prompt
+
   const reply = await complete({
-    system: agent.system_prompt,
+    system,
     messages: claudeMessages,
     effort: 'low',
     maxTokens: 700,
