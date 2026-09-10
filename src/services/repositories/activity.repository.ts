@@ -56,6 +56,8 @@ export const activityRepository = {
     level: NotificationLevel
     title: string
     body?: string | null
+    entityType?: string | null
+    entityId?: UUID | null
   }): Promise<Notification> {
     const result = await supabase
       .from('notifications')
@@ -65,6 +67,8 @@ export const activityRepository = {
         level: input.level,
         title: input.title,
         body: input.body ?? null,
+        entity_type: input.entityType ?? null,
+        entity_id: input.entityId ?? null,
       })
       .select()
       .single()

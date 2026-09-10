@@ -119,6 +119,7 @@ export async function searchKnowledge(
  */
 async function scoreAndSaveLead(
   admin: SupabaseClient,
+  businessId: string,
   leadId: string,
   history: { role: string; content: string; created_at: string }[],
   channel: string,
@@ -135,6 +136,12 @@ async function scoreAndSaveLead(
 
   const score = scoreLead({ messages, channel })
 
+  const { data: before } = await admin
+    .from('leads')
+    .select('full_name, potential_label')
+    .eq('id', leadId)
+    .maybeSingle()
+
   await admin
     .from('leads')
     .update({
@@ -146,6 +153,23 @@ async function scoreAndSaveLead(
       last_contacted_at: new Date().toISOString(),
     })
     .eq('id', leadId)
+
+  // Solo al entrar en caliente, no en cada mensaje que le siga: si no, una
+  // conversación larga con alguien ya identificado como buen contacto
+  // inundaría de avisos repetidos por algo que el negocio ya sabe.
+  const wasHot = before?.potential_label === 'caliente' || before?.potential_label === 'muy_caliente'
+  const isHot = score.label === 'caliente' || score.label === 'muy_caliente'
+
+  if (isHot && !wasHot) {
+    await admin.from('notifications').insert({
+      business_id: businessId,
+      level: 'exito',
+      title: `${before?.full_name ?? 'Un contacto'} tiene buena pinta (${score.score}/100)`,
+      body: score.reasons[0]?.label ?? null,
+      entity_type: 'lead',
+      entity_id: leadId,
+    })
+  }
 }
 
 export interface AgentReplyResult {
@@ -222,7 +246,7 @@ export async function respondWithAgent(
   // Se puntúa aquí, no solo en el simulador: cada mensaje real por Telegram o
   // n8n mueve la valoración del contacto igual que lo haría un mensaje de
   // prueba, con independencia de si hay un agente que además le responda.
-  await scoreAndSaveLead(admin, leadId, history ?? [], input.channel)
+  await scoreAndSaveLead(admin, businessId, leadId, history ?? [], input.channel)
 
   // Siempre exigiendo que el agente esté activo — si el que corresponde está
   // en pausa, no se sustituye por otro de un tipo distinto, que respondería

@@ -477,6 +477,8 @@ export interface Notification {
   level: NotificationLevel
   title: string
   body: string | null
+  entity_type: string | null
+  entity_id: UUID | null
   read_at: ISODate | null
   created_at: ISODate
 }

@@ -22,6 +22,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/misc'
 import { useAuth } from '@/features/auth/auth-context'
 import { useBusiness } from '@/features/businesses/business-context'
+import { NotificationBell } from '@/features/notifications/notification-bell'
 import { INDUSTRY_LABELS } from '@/domain/vocabulary'
 import { cn, initials } from '@/lib/utils'
 import { NAV_SECTIONS } from './nav-items'
@@ -35,7 +36,7 @@ export function AppShell() {
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
 
       <div className="lg:pl-64">
-        <MobileTopBar onOpenMenu={() => setMobileOpen(true)} />
+        <TopBar onOpenMenu={() => setMobileOpen(true)} />
         <main className="mx-auto w-full max-w-[1400px] px-5 py-6 sm:px-8 sm:py-8">
           <Outlet />
         </main>
@@ -203,13 +204,17 @@ function UserMenu() {
   )
 }
 
-function MobileTopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
+function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
   return (
-    <div className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur lg:hidden">
-      <Button variant="ghost" size="icon" onClick={onOpenMenu}>
-        <Menu />
-      </Button>
-      <Wordmark />
+    <div className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b bg-background/85 px-4 backdrop-blur sm:px-8 lg:px-8">
+      <div className="flex items-center gap-3 lg:hidden">
+        <Button variant="ghost" size="icon" onClick={onOpenMenu}>
+          <Menu />
+        </Button>
+        <Wordmark />
+      </div>
+      <div className="hidden lg:block" />
+      <NotificationBell />
     </div>
   )
 }

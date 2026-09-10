@@ -139,6 +139,15 @@ Deno.serve(async (request) => {
       payload: { actionType, stepIndex: stepIndex ?? null, totalSteps },
     })
 
+    await admin.from('notifications').insert({
+      business_id: businessId,
+      level: 'error',
+      title: `Automatización "${automation.name}" falló`,
+      body: errorMessage,
+      entity_type: 'automation',
+      entity_id: automationId,
+    })
+
     return Response.json({ ok: false, error: message }, { status: 500 })
   }
 })
