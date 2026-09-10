@@ -15,6 +15,7 @@ import { businessesRepository } from '@/services/repositories/businesses.reposit
 import { integrationsRepository } from '@/services/repositories/integrations.repository'
 import { knowledgeRepository } from '@/services/repositories/knowledge.repository'
 import { activityRepository } from '@/services/repositories/activity.repository'
+import { chunkText, vectorStore } from '@/services/vector'
 import type { BusinessSystem } from '@/domain/engine/business-system-generator'
 import type { BusinessProfile, Service, UUID } from '@/domain/types'
 
@@ -128,15 +129,43 @@ export const systemProvisioner = {
     }
 
     if (sections.length > 0) {
-      await knowledgeRepository.createDocument({
+      const content = sections.join('\n\n')
+      const document = await knowledgeRepository.createDocument({
         business_id: businessId,
         title: 'Información de tu negocio',
         source_type: 'texto',
         source_url: null,
         storage_path: null,
-        content: sections.join('\n\n'),
+        content,
         status: 'pendiente',
       })
+
+      // Esto sí es contenido real (lo que el negocio ya contó en el
+      // onboarding), a diferencia de las "Preguntas por responder" de abajo —
+      // se procesa al momento para que el primer agente ya tenga algo que
+      // consultar, en vez de esperar a que alguien entre a pulsar "Procesar".
+      try {
+        const chunks = chunkText(content)
+        const saved = await knowledgeRepository.replaceChunks(document.id, businessId, chunks)
+        await vectorStore.upsert(
+          saved.map((chunk) => ({
+            id: chunk.id,
+            businessId,
+            documentId: document.id,
+            chunkIndex: chunk.chunk_index,
+            content: chunk.content,
+          })),
+        )
+        await knowledgeRepository.updateDocument(document.id, {
+          status: 'listo',
+          chunk_count: chunks.length,
+          error_message: null,
+        })
+      } catch {
+        // Si el procesado falla, el documento se queda en "pendiente" — el
+        // dueño del negocio puede reintentar a mano; la generación del
+        // sistema no debe romperse por esto.
+      }
     }
 
     if (system.knowledgeSeeds.length > 0) {
