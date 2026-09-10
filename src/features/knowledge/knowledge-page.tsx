@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, FileText, Globe, HelpCircle, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, FileText, Globe, HelpCircle, Layers, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -121,6 +121,7 @@ function DocumentCard({
   businessId: string
 }) {
   const queryClient = useQueryClient()
+  const [viewingChunks, setViewingChunks] = useState(false)
 
   const process = useMutation({
     mutationFn: async () => {
@@ -224,6 +225,16 @@ function DocumentCard({
         >
           {document.status === 'listo' ? 'Actualizar' : 'Procesar'}
         </Button>
+        {document.status === 'listo' && (
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setViewingChunks(true)}
+            aria-label="Ver fragmentos"
+          >
+            <Layers className="text-muted-foreground" />
+          </Button>
+        )}
         <Button
           size="icon"
           variant="ghost"
@@ -234,7 +245,64 @@ function DocumentCard({
           <Trash2 className="text-muted-foreground" />
         </Button>
       </div>
+
+      <ChunksDialog
+        document={document}
+        open={viewingChunks}
+        onOpenChange={setViewingChunks}
+      />
     </Card>
+  )
+}
+
+function ChunksDialog({
+  document,
+  open,
+  onOpenChange,
+}: {
+  document: KnowledgeDocument
+  open: boolean
+  onOpenChange(open: boolean): void
+}) {
+  const chunksQuery = useQuery({
+    queryKey: ['knowledge-chunks', document.id],
+    queryFn: () => knowledgeRepository.listChunks(document.id),
+    enabled: open,
+  })
+
+  const chunks = chunksQuery.data ?? []
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[80vh] overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>{document.title}</DialogTitle>
+          <DialogDescription>
+            Así es como tus agentes ven este documento: dividido en {chunks.length || '…'}{' '}
+            fragmentos que buscan por palabra clave según lo que pregunte cada cliente.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+          {chunksQuery.isLoading ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Cargando…</p>
+          ) : chunks.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Sin fragmentos todavía.
+            </p>
+          ) : (
+            chunks.map((chunk) => (
+              <div key={chunk.id} className="rounded-md border bg-secondary/30 p-3">
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Fragmento {chunk.chunk_index + 1}
+                </p>
+                <p className="whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
