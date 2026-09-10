@@ -25,6 +25,21 @@ const HOT_SIGNALS = ['precio', 'cuánto cuesta', 'reservar', 'cita', 'comprar', 
 const COLD_SIGNALS = ['solo información', 'curiosidad', 'más adelante', 'estoy mirando', 'quizás']
 const NEGATIVE_SIGNALS = ['mal', 'fatal', 'queja', 'reclamación', 'enfadado', 'no funciona', 'error']
 
+// Sin modelo de lenguaje, reconocer una intención es lo único que separa
+// "pareces un contestador" de una respuesta que al menos apunta a lo que se
+// preguntó. Copiado en supabase/functions/_shared/rules-reply.ts para que
+// Telegram y n8n respondan igual cuando no hay IA de pago activa.
+const PRICE_SIGNALS = [
+  'cuanto cuesta', 'cuánto cuesta', 'que precio', 'qué precio', 'precio',
+  'cuanto vale', 'cuánto vale', 'tarifa', 'presupuesto', 'cuanto seria',
+  'cuánto sería',
+]
+const BOOKING_SIGNALS = [
+  'quiero reservar', 'pedir cita', 'coger cita', 'necesito una cita', 'quiero una cita',
+  'dar cita', 'pedir hora', 'quiero cita', 'agendar', 'quiero hueco', 'hay hueco',
+  'teneis hueco', 'tenéis hueco',
+]
+
 export const rulesProvider: AiService = {
   providerKey: 'rules',
   isLive: false,
@@ -200,25 +215,30 @@ export const rulesProvider: AiService = {
   async generateReply(input: GenerateReplyInput): Promise<string> {
     const { agent, profile, services } = input
     const normalized = input.incomingMessage.toLowerCase()
+    const activeServices = services.filter((s) => s.is_active)
 
     const matchedFaq = profile.faq.find(
       (f) => f.answer.trim() && overlaps(normalized, f.question.toLowerCase()),
     )
     if (matchedFaq) return matchedFaq.answer
 
-    const matchedService = services.find(
-      (s) => s.is_active && normalized.includes(s.name.toLowerCase()),
-    )
-    if (matchedService) {
-      const parts = [matchedService.description ?? `Te cuento sobre ${matchedService.name}.`]
-      if (matchedService.price !== null) {
-        parts.push(`El precio es ${matchedService.price} ${matchedService.currency}.`)
+    const matchedService = activeServices.find((s) => normalized.includes(s.name.toLowerCase()))
+    if (matchedService) return describeService(matchedService)
+
+    // Sin un servicio concreto mencionado, "cuánto cuesta" solo se puede
+    // contestar con un listado — mejor eso que fingir que no se preguntó nada.
+    if (PRICE_SIGNALS.some((s) => normalized.includes(s)) && activeServices.length > 0) {
+      if (activeServices.length === 1) return describeService(activeServices[0])
+
+      const priced = activeServices.filter((s) => s.price !== null).slice(0, 5)
+      if (priced.length > 0) {
+        const list = priced.map((s) => `${s.name}: ${s.price} ${s.currency}`).join(', ')
+        return `Esto es lo que tenemos: ${list}. ¿Sobre cuál quieres que te cuente más?`
       }
-      if (matchedService.duration_minutes) {
-        parts.push(`Dura unos ${matchedService.duration_minutes} minutos.`)
-      }
-      parts.push('¿Quieres que te reserve un hueco?')
-      return parts.join(' ')
+    }
+
+    if (BOOKING_SIGNALS.some((s) => normalized.includes(s))) {
+      return 'Claro, dime qué día y a qué hora te viene bien y te lo confirmo en cuanto pueda.'
     }
 
     if (NEGATIVE_SIGNALS.some((s) => normalized.includes(s))) {
@@ -227,6 +247,18 @@ export const rulesProvider: AiService = {
 
     return `Gracias por escribir a ${profile.business_name}. Cuéntame un poco más sobre lo que necesitas y te ayudo enseguida.`
   },
+}
+
+function describeService(service: GenerateReplyInput['services'][number]): string {
+  const parts = [service.description ?? `Te cuento sobre ${service.name}.`]
+  if (service.price !== null) {
+    parts.push(`El precio es ${service.price} ${service.currency}.`)
+  }
+  if (service.duration_minutes) {
+    parts.push(`Dura unos ${service.duration_minutes} minutos.`)
+  }
+  parts.push('¿Quieres que te reserve un hueco?')
+  return parts.join(' ')
 }
 
 /** Loose keyword overlap — enough to match an FAQ without a model. */

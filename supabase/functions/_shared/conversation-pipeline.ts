@@ -285,21 +285,29 @@ export async function respondWithAgent(
     claudeMessages.push({ role: 'user', content: input.incomingText || 'Hola' })
   }
 
-  let reply: string
-  let repliedWithAi: boolean
+  let reply: string | null = null
+  let repliedWithAi = false
 
+  // isAnthropicConfigured solo dice que hay una clave puesta, no que funcione
+  // — puede estar sin saldo, caducada, o Anthropic puede estar caído. Se
+  // intenta primero, pero un fallo aquí no debe dejar al negocio mudo con su
+  // cliente: cae al motor de reglas, exactamente como ya hace el proveedor
+  // remoto del frontend (ver src/services/ai/providers/remote.provider.ts).
   if (isAnthropicConfigured && agent.system_prompt) {
-    const relevantKnowledge = await searchKnowledge(admin, businessId, input.incomingText)
-    const system = relevantKnowledge
-      ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
-      : agent.system_prompt
+    try {
+      const relevantKnowledge = await searchKnowledge(admin, businessId, input.incomingText)
+      const system = relevantKnowledge
+        ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
+        : agent.system_prompt
 
-    reply = await complete({ system, messages: claudeMessages, effort: 'low', maxTokens: 700 })
-    repliedWithAi = true
-  } else {
-    // Sin clave de Claude configurada (o sin saldo), un negocio no debería
-    // quedarse mudo con sus clientes: se responde con el mismo motor
-    // determinista que ya usa el simulador cuando no hay IA de pago activa.
+      reply = await complete({ system, messages: claudeMessages, effort: 'low', maxTokens: 700 })
+      repliedWithAi = true
+    } catch (error) {
+      console.error('Claude falló, se cae al motor de reglas', error)
+    }
+  }
+
+  if (reply === null) {
     const [{ data: profile }, { data: services }] = await Promise.all([
       admin.from('business_profiles').select('business_name, faq').eq('business_id', businessId).maybeSingle(),
       admin
@@ -317,7 +325,6 @@ export async function respondWithAgent(
         (agent.handoff_rules as { escalation_message?: string } | null)?.escalation_message ??
         'Te contactaremos en breve.',
     })
-    repliedWithAi = false
   }
 
   await admin.from('messages').insert({
