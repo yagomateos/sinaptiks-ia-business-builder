@@ -348,12 +348,20 @@ export async function respondWithAgent(
     )
   }
 
-  const { data: history } = await admin
+  // Ascendente + limit(20) coge los 20 mensajes MÁS ANTIGUOS de la
+  // conversación, no los más recientes — con más de 20 mensajes en total, el
+  // agente veía la charla de hace horas y, sin nada en medio, el mensaje de
+  // ahora mismo. Se pide en descendente (los últimos 20 de verdad) y se
+  // invierte para devolver el orden cronológico que espera el resto de la
+  // función.
+  const { data: recentHistory } = await admin
     .from('messages')
     .select('role, content, created_at')
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(20)
+
+  const history = recentHistory ? [...recentHistory].reverse() : recentHistory
 
   // Se puntúa aquí, no solo en el simulador: cada mensaje real por Telegram o
   // n8n mueve la valoración del contacto igual que lo haría un mensaje de
