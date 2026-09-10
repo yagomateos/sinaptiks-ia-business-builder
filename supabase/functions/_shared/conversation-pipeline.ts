@@ -17,6 +17,8 @@ import { scoreLead, type ScoredMessage } from './lead-scoring.ts'
 import { generateRuleBasedReply, type RulesReplyFaq } from './rules-reply.ts'
 import { isConfigured as isN8nConfigured, n8n } from './n8n-client.ts'
 import { webhookPathFor } from './workflow-builder.ts'
+import { isResendConfigured, sendEmail } from './resend-client.ts'
+import { appointmentRequestEmailHtml } from './email-templates.ts'
 
 export interface ContactFields {
   name?: unknown
@@ -341,7 +343,68 @@ async function registerAppointmentRequest(
     })
     .eq('id', leadId)
 
+  await sendAppointmentEmail(admin, businessId, {
+    nombre,
+    servicio,
+    fechaHora,
+    telefono,
+    email,
+    canal: String(payload.channel ?? payload.canal ?? 'web'),
+  })
+
   return 'Solicitud registrada, el equipo ya lo tiene.'
+}
+
+/**
+ * Best-effort a propósito, igual que fireAutomation: un email que no sale no
+ * puede tirar abajo la respuesta al cliente ni deshacer lo que ya se guardó
+ * en el aviso del panel y en el lead.
+ */
+async function sendAppointmentEmail(
+  admin: SupabaseClient,
+  businessId: string,
+  details: {
+    nombre: string
+    servicio: string
+    fechaHora: string
+    telefono: string | null
+    email: string | null
+    canal: string
+  },
+): Promise<void> {
+  if (!isResendConfigured) return
+
+  try {
+    const { data: profile } = await admin
+      .from('business_profiles')
+      .select('business_name, notification_email')
+      .eq('business_id', businessId)
+      .maybeSingle()
+
+    let to = profile?.notification_email ?? null
+
+    if (!to) {
+      const { data: business } = await admin
+        .from('businesses')
+        .select('profiles(email)')
+        .eq('id', businessId)
+        .maybeSingle()
+      to = (business?.profiles as { email?: string } | null)?.email ?? null
+    }
+
+    if (!to) return
+
+    await sendEmail({
+      to,
+      subject: `Nueva solicitud de cita — ${details.nombre}`,
+      html: appointmentRequestEmailHtml({
+        businessName: profile?.business_name ?? 'tu negocio',
+        ...details,
+      }),
+    })
+  } catch (error) {
+    console.error('No se pudo enviar el email de la solicitud de cita', error)
+  }
 }
 
 export interface AgentReplyResult {
