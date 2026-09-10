@@ -442,3 +442,8 @@ verify_jwt = true
 # en la cabecera (ver telegram-webhook/index.ts).
 [functions.telegram-webhook]
 verify_jwt = false
+
+# Descarga el texto de una URL para el Conocimiento. La llama una persona con
+# sesión, para su propio negocio.
+[functions.fetch-url]
+verify_jwt = true

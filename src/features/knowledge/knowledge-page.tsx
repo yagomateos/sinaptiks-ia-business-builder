@@ -26,6 +26,7 @@ import {
 import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/shared/states'
 import { knowledgeRepository } from '@/services/repositories/knowledge.repository'
+import { urlFetchService } from '@/services/knowledge/url-fetch.service'
 import { chunkText, vectorStore } from '@/services/vector'
 import type { KnowledgeDocument, KnowledgeSourceType, KnowledgeStatus } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
@@ -123,13 +124,27 @@ function DocumentCard({
 
   const process = useMutation({
     mutationFn: async () => {
-      if (!document.content?.trim()) {
+      let content = document.content?.trim() ?? ''
+
+      // Una URL se relee cada vez que se procesa: "Actualizar" debe traer lo
+      // que haya ahora en la página, no re-partir el texto que se guardó la
+      // última vez.
+      if (document.source_type === 'url') {
+        if (!document.source_url) {
+          throw new Error('Este documento no tiene una dirección que leer.')
+        }
+        await knowledgeRepository.updateDocument(document.id, { status: 'procesando' })
+        content = await urlFetchService.fetchText(businessId, document.source_url)
+        await knowledgeRepository.updateDocument(document.id, { content })
+      }
+
+      if (!content) {
         throw new Error('Este documento no tiene contenido que procesar.')
       }
 
       await knowledgeRepository.updateDocument(document.id, { status: 'procesando' })
 
-      const chunks = chunkText(document.content)
+      const chunks = chunkText(content)
       const saved = await knowledgeRepository.replaceChunks(document.id, businessId, chunks)
 
       await vectorStore.upsert(
@@ -332,7 +347,7 @@ function AddKnowledgeDialog({
                 placeholder="https://tunegocio.com/precios"
               />
               <p className="text-xs text-muted-foreground">
-                Leeremos el contenido de esta página cuando conectes la base de conocimiento.
+                Leeremos el texto de esta página en cuanto pulses "Procesar".
               </p>
             </div>
           ) : (
