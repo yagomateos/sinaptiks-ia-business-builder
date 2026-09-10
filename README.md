@@ -177,9 +177,11 @@ cuerpo de la petición, para que el cliente no pueda inventarse acciones.
 |---|---|
 | Crear contacto | ✅ real |
 | Actualizar contacto | ✅ real |
-| Avisar al equipo | ✅ real |
+| Avisar al equipo | ✅ real — notificación en la campana, enlazando a lo que la originó |
 | Esperar X horas | ✅ real (lo hace n8n) |
 | Agente responde | ✅ real — crea la conversación, consulta lo que subiste a Conocimiento, y responde con Claude si hay clave configurada |
+| Puntuar potencial del contacto | ✅ real — en cada mensaje, no solo en el simulador; mueve `potential_score`/`potential_label` en el CRM |
+| Derivar a una persona | ✅ real — por palabra clave, por turnos sin avanzar, o porque el propio agente lo decidió; marca la conversación, avisa por la campana y el agente deja de responder |
 | Telegram (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |
 | Email / agendar cita | registra el paso, no envía todavía |
 
@@ -337,9 +339,13 @@ npm run lint      # eslint
 
 **Funcionando:** autenticación, multi-tenancy con RLS, onboarding, perfil de
 negocio, generador de sistemas, dashboard, automatizaciones conectadas a n8n
-real, agentes IA con editor de instrucciones, base de conocimiento con
-chunking, CRM con lista y kanban, bandeja de conversaciones, marketplace de
-conexiones, analíticas y panel de administración.
+real (con rastro explicado paso a paso cuando fallan a mitad de camino),
+agentes IA con editor de instrucciones, base de conocimiento con chunking
+(texto, preguntas frecuentes, archivo .txt y páginas web leídas de verdad,
+con vista de los fragmentos procesados), CRM con lista y kanban, puntuación
+de potencial en cada conversación real, derivación automática a una persona,
+campana de avisos, bandeja de conversaciones, marketplace de conexiones
+(Telegram conectable de verdad), analíticas y panel de administración.
 
 **Simulado tras una interfaz definitiva:** llamadas a modelos de IA (funciona
 con un motor de reglas determinista), embeddings en Qdrant (búsqueda por
