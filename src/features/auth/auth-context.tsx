@@ -13,6 +13,7 @@ interface AuthContextValue {
   signUp(email: string, password: string, fullName: string): Promise<{ needsConfirmation: boolean }>
   signOut(): Promise<void>
   resetPassword(email: string): Promise<void>
+  updatePassword(newPassword: string): Promise<void>
   refreshProfile(): Promise<void>
 }
 
@@ -91,6 +92,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           redirectTo: `${window.location.origin}/reset-password`,
         })
         if (error) throw toAppError(error, 'No hemos podido enviar el correo.')
+      },
+
+      async updatePassword(newPassword) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword })
+        if (error) throw toAppError(error, 'No hemos podido cambiar la contraseña.')
       },
 
       async refreshProfile() {

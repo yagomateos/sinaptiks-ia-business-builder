@@ -14,6 +14,7 @@ import {
 import { LoginPage } from '@/features/auth/login-page'
 import { SignUpPage } from '@/features/auth/signup-page'
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page'
+import { ResetPasswordPage } from '@/features/auth/reset-password-page'
 
 /* Everything behind the login is split out of the initial bundle. */
 const CreateBusinessPage = lazy(
@@ -153,6 +154,13 @@ export const router = createBrowserRouter([
         <ForgotPasswordPage />
       </RedirectIfAuthenticated>
     ),
+  },
+  {
+    // Sin guardas: el enlace del correo crea una sesión de recuperación al
+    // cargar — RedirectIfAuthenticated la vería como una sesión normal y
+    // mandaría a la persona a /app antes de dejarle cambiar la contraseña.
+    path: '/reset-password',
+    element: <ResetPasswordPage />,
   },
 
   {
