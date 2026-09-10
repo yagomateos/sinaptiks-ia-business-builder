@@ -258,6 +258,15 @@ export const rulesProvider: AiService = {
       return agent.handoff_rules.escalation_message
     }
 
+    // Último escalón sin IA: si lo último que pidió el bot fue justo el
+    // nombre y el día, la respuesta que sea — cualquiera — es esa. Va
+    // después de la señal negativa: una queja en mitad de la reserva debe
+    // seguir derivando, no confundirse con "esa es tu respuesta".
+    const askedForBookingDetails = lastAgentMessage?.includes('el día que prefieres') ?? false
+    if (askedForBookingDetails && normalized.length > 0) {
+      return 'Genial, tomo nota — en cuanto alguien del equipo lo confirme te escribimos.'
+    }
+
     // Un saludo suelto ("hola") se distingue aquí, después de todo lo
     // específico — así un mensaje real que además saluda ("hola, cuánto
     // cuesta...") sigue respondiendo a lo que se preguntó, no al saludo.
