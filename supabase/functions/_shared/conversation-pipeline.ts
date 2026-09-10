@@ -347,7 +347,12 @@ async function registerAppointmentRequest(
   const parsedDate = fechaHoraIso ? new Date(fechaHoraIso) : null
   const nextActionAt = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null
 
-  await admin
+  // El error se registra en vez de tragárselo: un trigger de la propia base
+  // de datos (notify_stage_change_automations) puede rechazar este UPDATE
+  // entero por una razón ajena a este código — ya pasó una vez (un enum
+  // comparado sin convertir a texto) y quedó invisible porque nadie miraba
+  // este `error`.
+  const { error: leadUpdateError } = await admin
     .from('leads')
     .update({
       ...(email ? { email } : {}),
@@ -358,6 +363,10 @@ async function registerAppointmentRequest(
       temperature: 'caliente',
     })
     .eq('id', leadId)
+
+  if (leadUpdateError) {
+    console.error('No se pudo actualizar el lead tras registrar la cita', leadUpdateError)
+  }
 
   await sendAppointmentEmail(admin, businessId, {
     nombre,
