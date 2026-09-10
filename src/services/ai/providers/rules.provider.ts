@@ -39,6 +39,10 @@ const BOOKING_SIGNALS = [
   'dar cita', 'pedir hora', 'quiero cita', 'agendar', 'quiero hueco', 'hay hueco',
   'teneis hueco', 'tenéis hueco',
 ]
+const GREETING_SIGNALS = ['hola', 'buenas', 'buenos dias', 'buenos días', 'buenas tardes', 'buenas noches', 'hey', 'ey']
+const AFFIRMATIVE_WORDS = new Set([
+  'si', 'sí', 'vale', 'ok', 'okay', 'claro', 'de acuerdo', 'perfecto', 'genial', 'va bien',
+])
 
 export const rulesProvider: AiService = {
   providerKey: 'rules',
@@ -213,9 +217,10 @@ export const rulesProvider: AiService = {
   },
 
   async generateReply(input: GenerateReplyInput): Promise<string> {
-    const { agent, profile, services } = input
-    const normalized = input.incomingMessage.toLowerCase()
+    const { agent, profile, services, history } = input
+    const normalized = input.incomingMessage.toLowerCase().trim()
     const activeServices = services.filter((s) => s.is_active)
+    const lastAgentMessage = [...history].reverse().find((m) => m.role === 'agente_ia')?.content
 
     const matchedFaq = profile.faq.find(
       (f) => f.answer.trim() && overlaps(normalized, f.question.toLowerCase()),
@@ -241,8 +246,23 @@ export const rulesProvider: AiService = {
       return 'Claro, dime qué día y a qué hora te viene bien y te lo confirmo en cuanto pueda.'
     }
 
+    // Un "sí" suelto solo significa algo si el propio bot acaba de ofrecer
+    // reservar — sin esto, confirmar una oferta caía en el mismo genérico que
+    // cualquier otra cosa que no encajara con nada.
+    const offeredBooking = lastAgentMessage?.includes('reserve un hueco') ?? false
+    if (offeredBooking && AFFIRMATIVE_WORDS.has(normalized)) {
+      return 'Perfecto. Dime tu nombre y el día que prefieres, y en cuanto pueda te lo confirmo.'
+    }
+
     if (NEGATIVE_SIGNALS.some((s) => normalized.includes(s))) {
       return agent.handoff_rules.escalation_message
+    }
+
+    // Un saludo suelto ("hola") se distingue aquí, después de todo lo
+    // específico — así un mensaje real que además saluda ("hola, cuánto
+    // cuesta...") sigue respondiendo a lo que se preguntó, no al saludo.
+    if (GREETING_SIGNALS.some((s) => normalized === s || normalized.startsWith(`${s} `))) {
+      return `¡Hola! Soy el asistente de ${profile.business_name}. ¿En qué te puedo ayudar?`
     }
 
     return `Gracias por escribir a ${profile.business_name}. Cuéntame un poco más sobre lo que necesitas y te ayudo enseguida.`

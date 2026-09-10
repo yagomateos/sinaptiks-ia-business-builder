@@ -41,6 +41,10 @@ const BOOKING_SIGNALS = [
   'dar cita', 'pedir hora', 'quiero cita', 'agendar', 'quiero hueco', 'hay hueco',
   'teneis hueco', 'tenéis hueco',
 ]
+const GREETING_SIGNALS = ['hola', 'buenas', 'buenos dias', 'buenos días', 'buenas tardes', 'buenas noches', 'hey', 'ey']
+const AFFIRMATIVE_WORDS = new Set([
+  'si', 'sí', 'vale', 'ok', 'okay', 'claro', 'de acuerdo', 'perfecto', 'genial', 'va bien',
+])
 
 export function generateRuleBasedReply(input: {
   incomingText: string
@@ -48,8 +52,10 @@ export function generateRuleBasedReply(input: {
   faq: RulesReplyFaq[]
   services: RulesReplyService[]
   escalationMessage: string
+  /** Último mensaje del agente en esta conversación, si lo hay. */
+  lastAgentMessage?: string | null
 }): string {
-  const normalized = input.incomingText.toLowerCase()
+  const normalized = input.incomingText.toLowerCase().trim()
   const activeServices = input.services.filter((s) => s.is_active)
 
   const matchedFaq = input.faq.find(
@@ -76,8 +82,23 @@ export function generateRuleBasedReply(input: {
     return 'Claro, dime qué día y a qué hora te viene bien y te lo confirmo en cuanto pueda.'
   }
 
+  // Un "sí" suelto solo significa algo si el propio bot acaba de ofrecer
+  // reservar — sin esto, confirmar una oferta caía en el mismo genérico que
+  // cualquier otra cosa que no encajara con nada.
+  const offeredBooking = input.lastAgentMessage?.includes('reserve un hueco') ?? false
+  if (offeredBooking && AFFIRMATIVE_WORDS.has(normalized)) {
+    return 'Perfecto. Dime tu nombre y el día que prefieres, y en cuanto pueda te lo confirmo.'
+  }
+
   if (NEGATIVE_SIGNALS.some((s) => normalized.includes(s))) {
     return input.escalationMessage
+  }
+
+  // Un saludo suelto ("hola") se distingue aquí, después de todo lo
+  // específico — así un mensaje real que además saluda ("hola, cuánto
+  // cuesta...") sigue respondiendo a lo que se preguntó, no al saludo.
+  if (GREETING_SIGNALS.some((s) => normalized === s || normalized.startsWith(`${s} `))) {
+    return `¡Hola! Soy el asistente de ${input.businessName}. ¿En qué te puedo ayudar?`
   }
 
   return `Gracias por escribir a ${input.businessName}. Cuéntame un poco más sobre lo que necesitas y te ayudo enseguida.`

@@ -316,6 +316,8 @@ export async function respondWithAgent(
         .eq('business_id', businessId),
     ])
 
+    const lastAgentMessage = [...claudeMessages].reverse().find((m) => m.role === 'assistant')?.content
+
     reply = generateRuleBasedReply({
       incomingText: input.incomingText,
       businessName: profile?.business_name ?? 'nuestro negocio',
@@ -324,6 +326,7 @@ export async function respondWithAgent(
       escalationMessage:
         (agent.handoff_rules as { escalation_message?: string } | null)?.escalation_message ??
         'Te contactaremos en breve.',
+      lastAgentMessage,
     })
   }
 
