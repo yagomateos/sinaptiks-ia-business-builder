@@ -227,7 +227,7 @@ export const rulesProvider: AiService = {
     )
     if (matchedFaq) return matchedFaq.answer
 
-    const matchedService = activeServices.find((s) => matchesServiceName(normalized, s.name))
+    const matchedService = findMatchedService(normalized, activeServices)
     if (matchedService) return describeService(matchedService)
 
     // Sin un servicio concreto mencionado, "cuánto cuesta" solo se puede
@@ -281,14 +281,32 @@ export const rulesProvider: AiService = {
 /**
  * "Implante dental" solo coincidía si el mensaje decía las dos palabras
  * seguidas — nadie escribe así. Basta con que aparezca una palabra propia
- * del nombre del servicio (no un relleno tipo "de"/"para").
+ * del nombre del servicio... pero "dental" sola dispararía cualquier
+ * servicio de una clínica dental, no solo el implante. Una palabra cuenta
+ * como pista solo si ningún otro servicio activo la comparte — "implante"
+ * es tuyo, "dental" es de todos.
  */
-function matchesServiceName(normalizedText: string, serviceName: string): boolean {
-  const name = serviceName.toLowerCase()
-  if (normalizedText.includes(name)) return true
+function findMatchedService(
+  normalizedText: string,
+  services: GenerateReplyInput['services'],
+): GenerateReplyInput['services'][number] | undefined {
+  const exact = services.find((s) => normalizedText.includes(s.name.toLowerCase()))
+  if (exact) return exact
 
-  const words = name.split(/\s+/).filter((w) => w.length > 3)
-  return words.some((w) => normalizedText.includes(w))
+  const wordCounts = new Map<string, number>()
+  for (const s of services) {
+    for (const w of significantWords(s.name)) {
+      wordCounts.set(w, (wordCounts.get(w) ?? 0) + 1)
+    }
+  }
+
+  return services.find((s) =>
+    significantWords(s.name).some((w) => wordCounts.get(w) === 1 && normalizedText.includes(w)),
+  )
+}
+
+function significantWords(name: string): string[] {
+  return name.toLowerCase().split(/\s+/).filter((w) => w.length > 3)
 }
 
 function describeService(service: GenerateReplyInput['services'][number]): string {
