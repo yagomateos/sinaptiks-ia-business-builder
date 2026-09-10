@@ -140,6 +140,16 @@ function NotificationRow({
     )
   }
 
+  if (notification.entity_type === 'conversation' && notification.entity_id) {
+    return (
+      <DropdownMenuItem asChild className="cursor-pointer p-0 focus:bg-transparent">
+        <Link to={`/app/conversaciones/${notification.entity_id}`} onClick={onRead}>
+          {content}
+        </Link>
+      </DropdownMenuItem>
+    )
+  }
+
   return (
     <DropdownMenuItem className="cursor-pointer p-0 focus:bg-transparent" onSelect={onRead}>
       {content}

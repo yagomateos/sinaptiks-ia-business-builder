@@ -202,7 +202,7 @@ export async function respondWithAgent(
 
   const { data: existingConversation } = await admin
     .from('conversations')
-    .select('id')
+    .select('id, handled_by')
     .eq('business_id', businessId)
     .eq('lead_id', leadId)
     .eq('channel', input.channel)
@@ -210,6 +210,7 @@ export async function respondWithAgent(
     .maybeSingle()
 
   let conversationId = existingConversation?.id as string | undefined
+  let handedOffAlready = existingConversation?.handled_by === 'humano'
 
   if (!conversationId) {
     const { data: created, error } = await admin
@@ -253,7 +254,7 @@ export async function respondWithAgent(
   // con la personalidad y el objetivo equivocados.
   let agentQuery = admin
     .from('ai_agents')
-    .select('id, system_prompt')
+    .select('id, system_prompt, handoff_rules')
     .eq('business_id', businessId)
     .eq('status', 'activo')
 
@@ -299,7 +300,74 @@ export async function respondWithAgent(
     content: reply,
   })
 
+  // El agente promete en su propio prompt "te escribirán en breve" cuando
+  // deriva — pero decirlo no avisa a nadie. Sin esto, la promesa la hace el
+  // texto y el cumplimiento no lo hace nadie.
+  if (!handedOffAlready) {
+    const contactTurns = claudeMessages.filter((m) => m.role === 'user').length
+    const shouldHandOff = detectHandoff(agent.handoff_rules, {
+      incomingText: input.incomingText,
+      reply,
+      contactTurns,
+    })
+
+    if (shouldHandOff) {
+      await admin
+        .from('conversations')
+        .update({ handled_by: 'humano', status: 'pendiente' })
+        .eq('id', conversationId)
+
+      const { data: lead } = await admin
+        .from('leads')
+        .select('full_name')
+        .eq('id', leadId)
+        .maybeSingle()
+
+      await admin.from('notifications').insert({
+        business_id: businessId,
+        level: 'aviso',
+        title: `${lead?.full_name ?? 'Un contacto'} necesita hablar con una persona`,
+        body: shouldHandOff,
+        entity_type: 'conversation',
+        entity_id: conversationId,
+      })
+    }
+  }
+
   return { conversationId, leadId, reply, reason: null }
+}
+
+interface HandoffRules {
+  escalate_on_keywords?: string[]
+  escalate_after_turns?: number
+  escalation_message?: string
+}
+
+/** Devuelve el motivo (para el aviso) si toca derivar, o null si no. */
+function detectHandoff(
+  rules: HandoffRules | null | undefined,
+  ctx: { incomingText: string; reply: string; contactTurns: number },
+): string | null {
+  if (!rules) return null
+
+  const text = ctx.incomingText.toLowerCase()
+  const matchedKeyword = (rules.escalate_on_keywords ?? []).find((k) =>
+    text.includes(k.toLowerCase()),
+  )
+  if (matchedKeyword) return `Mencionó "${matchedKeyword}"`
+
+  if (rules.escalate_after_turns && ctx.contactTurns >= rules.escalate_after_turns) {
+    return `Lleva ${ctx.contactTurns} mensajes sin resolverse`
+  }
+
+  // La señal más fiable: el propio agente decidió derivar y lo dijo con las
+  // palabras exactas que se le configuraron.
+  const escalationMessage = rules.escalation_message?.trim()
+  if (escalationMessage && ctx.reply.includes(escalationMessage)) {
+    return 'El agente decidió derivarlo'
+  }
+
+  return null
 }
 
 /**
