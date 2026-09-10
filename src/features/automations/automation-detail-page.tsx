@@ -176,6 +176,11 @@ export function AutomationDetailPage() {
                 Cuándo se activa
               </p>
               <p className="mt-1 text-sm">{automation.trigger.description}</p>
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Este disparador no está conectado a ningún evento real todavía — la
+                automatización no se lanza sola. Solo se ejecuta cuando pulsas "Probar ahora".
+              </p>
             </div>
 
             <div className="mt-4 space-y-2">

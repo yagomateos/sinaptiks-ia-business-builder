@@ -123,13 +123,25 @@ function AutomationCard({ automation }: { automation: Automation }) {
     UNCONNECTED_AUTOMATION_ACTIONS.has(action.type),
   )
 
+  // Ningún disparador (mensaje_entrante, cambio_estado, programado,
+  // inactividad) está conectado a un evento real todavía — "activa" solo
+  // significa que responde a "Probar ahora", no que corre sola. Se avisa
+  // aquí porque en la lista es donde alguien decide activarla sin entrar al
+  // detalle.
+  const warningTitle = [
+    isActive ? 'No se dispara sola: solo corre cuando pulsas "Probar ahora".' : null,
+    hasUnconnectedActions ? 'Algún paso todavía no sale de verdad: falta conectar su canal.' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <Card className="flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <Badge variant="secondary">{AUTOMATION_CATEGORY_LABELS[automation.category]}</Badge>
         <div className="flex items-center gap-1.5">
-          {hasUnconnectedActions && (
-            <span title="Algún paso todavía no sale de verdad: falta conectar su canal.">
+          {warningTitle && (
+            <span title={warningTitle}>
               <AlertTriangle className="h-3.5 w-3.5 text-warning" />
             </span>
           )}
