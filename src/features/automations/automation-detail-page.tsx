@@ -226,7 +226,9 @@ export function AutomationDetailPage() {
                     <div className="min-w-0">
                       <p className="text-sm">{formatDateTime(execution.started_at)}</p>
                       {execution.error_message && (
-                        <p className="truncate text-xs text-destructive">{execution.error_message}</p>
+                        <p className="text-xs leading-relaxed text-destructive">
+                          {execution.error_message}
+                        </p>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-3">

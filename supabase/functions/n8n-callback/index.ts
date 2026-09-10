@@ -66,7 +66,7 @@ Deno.serve(async (request) => {
   // comprobación, un secreto filtrado permitiría escribir en cualquier negocio.
   const { data: automation } = await admin
     .from('automations')
-    .select('id, name, business_id')
+    .select('id, name, business_id, actions')
     .eq('id', automationId)
     .eq('business_id', businessId)
     .maybeSingle()
@@ -109,14 +109,34 @@ Deno.serve(async (request) => {
     const message = error instanceof Error ? error.message : 'Error desconocido'
     console.error(`Acción ${actionType} falló`, error)
 
+    // Cada paso es una llamada HTTP independiente desde n8n: si este falla,
+    // los pasos anteriores ya se ejecutaron (o no habría llegado la llamada).
+    // Sin decirlo explícitamente, la única fila que queda de esta ejecución
+    // parece un fallo total en vez de una interrupción a mitad de camino.
+    const totalSteps = Array.isArray(automation.actions) ? automation.actions.length : null
+    const stepIndex = body.stepIndex
+    const stepLabel =
+      typeof stepIndex === 'number'
+        ? totalSteps
+          ? `paso ${stepIndex + 1} de ${totalSteps}`
+          : `paso ${stepIndex + 1}`
+        : null
+    const progressNote =
+      typeof stepIndex === 'number' && stepIndex > 0
+        ? `Se completaron los ${stepIndex} paso(s) anteriores. `
+        : ''
+    const errorMessage = stepLabel
+      ? `${progressNote}Falló en el ${stepLabel} (${describeAction(actionType)}): ${message}`
+      : message
+
     await admin.from('automation_executions').insert({
       automation_id: automationId,
       business_id: businessId,
       status: 'error',
       started_at: startedAt,
       finished_at: new Date().toISOString(),
-      error_message: message,
-      payload: { actionType },
+      error_message: errorMessage,
+      payload: { actionType, stepIndex: stepIndex ?? null, totalSteps },
     })
 
     return Response.json({ ok: false, error: message }, { status: 500 })
