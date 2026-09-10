@@ -32,6 +32,7 @@ Deno.serve(async (request) => {
     await assertBusinessAccess(ctx, businessId)
 
     const target = parseAndGuardUrl(url.trim())
+    await assertPublicHost(target.hostname)
     const html = await fetchWithTimeout(target)
     const content = htmlToText(html).slice(0, MAX_CONTENT_LENGTH)
 
@@ -73,6 +74,35 @@ function parseAndGuardUrl(raw: string): URL {
   }
 
   return target
+}
+
+/**
+ * `parseAndGuardUrl` solo pilla una IP privada escrita literalmente en la
+ * URL. No pilla un dominio normal cuyo DNS resuelva a una IP privada — ese
+ * dominio lo controla quien lo registra, así que resolverlo y comprobar cada
+ * IP antes de conectar es la única forma real de cerrar ese hueco.
+ */
+async function assertPublicHost(hostname: string): Promise<void> {
+  if (isPrivateIp(hostname)) throw new HttpError(400, 'Esa dirección no es accesible')
+
+  let records: string[]
+  try {
+    const [v4, v6] = await Promise.allSettled([
+      Deno.resolveDns(hostname, 'A'),
+      Deno.resolveDns(hostname, 'AAAA'),
+    ])
+    records = [
+      ...(v4.status === 'fulfilled' ? v4.value : []),
+      ...(v6.status === 'fulfilled' ? v6.value : []),
+    ]
+  } catch {
+    throw new HttpError(400, 'No se ha podido resolver esa dirección')
+  }
+
+  if (records.length === 0) throw new HttpError(400, 'No se ha podido resolver esa dirección')
+  if (records.some((ip) => isPrivateIp(ip))) {
+    throw new HttpError(400, 'Esa dirección no es accesible')
+  }
 }
 
 function isPrivateIp(host: string): boolean {
