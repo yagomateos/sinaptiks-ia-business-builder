@@ -525,28 +525,104 @@ function AccountSettings() {
   })
 
   return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Tu perfil</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="profileName">Nombre</Label>
+            <Input
+              id="profileName"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input value={user?.email ?? ''} disabled className="max-w-sm" />
+          </div>
+
+          <Button loading={save.isPending} onClick={() => save.mutate()}>
+            Guardar
+          </Button>
+        </CardContent>
+      </Card>
+
+      <ChangePasswordCard />
+    </div>
+  )
+}
+
+const MIN_PASSWORD_LENGTH = 8
+
+function ChangePasswordCard() {
+  const { updatePassword } = useAuth()
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const change = useMutation({
+    mutationFn: async () => {
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        throw new Error(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`)
+      }
+      if (password !== confirm) throw new Error('Las contraseñas no coinciden.')
+      await updatePassword(password)
+    },
+    onSuccess: () => {
+      setPassword('')
+      setConfirm('')
+      setError(null)
+      toast.success('Contraseña actualizada')
+    },
+    onError: (err) => {
+      const message = err instanceof Error ? err.message : 'No hemos podido cambiarla.'
+      setError(message)
+      toast.error(message)
+    },
+  })
+
+  return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Tu perfil</CardTitle>
+        <CardTitle className="text-sm">Cambiar contraseña</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="profileName">Nombre</Label>
-          <Input
-            id="profileName"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="max-w-sm"
-          />
+        <div className="grid gap-4 sm:max-w-lg sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="newPassword">Contraseña nueva</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirmPassword">Repítela</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label>Email</Label>
-          <Input value={user?.email ?? ''} disabled className="max-w-sm" />
-        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <Button loading={save.isPending} onClick={() => save.mutate()}>
-          Guardar
+        <Button
+          loading={change.isPending}
+          disabled={!password || !confirm}
+          onClick={() => change.mutate()}
+        >
+          Actualizar contraseña
         </Button>
       </CardContent>
     </Card>
