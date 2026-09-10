@@ -11,7 +11,11 @@ import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/shared/states'
 import { automationsRepository } from '@/services/repositories/automations.repository'
 import { automationService } from '@/services/system/automation.service'
-import { AUTOMATION_CATEGORY_LABELS, UNCONNECTED_AUTOMATION_ACTIONS } from '@/domain/vocabulary'
+import {
+  AUTOMATION_CATEGORY_LABELS,
+  isAutomationTriggerConnected,
+  UNCONNECTED_AUTOMATION_ACTIONS,
+} from '@/domain/vocabulary'
 import type { Automation, AutomationStatus } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
 import { formatRelative } from '@/lib/utils'
@@ -123,13 +127,12 @@ function AutomationCard({ automation }: { automation: Automation }) {
     UNCONNECTED_AUTOMATION_ACTIONS.has(action.type),
   )
 
-  // Ningún disparador (mensaje_entrante, cambio_estado, programado,
-  // inactividad) está conectado a un evento real todavía — "activa" solo
-  // significa que responde a "Probar ahora", no que corre sola. Se avisa
-  // aquí porque en la lista es donde alguien decide activarla sin entrar al
-  // detalle.
+  // Se avisa aquí porque en la lista es donde alguien decide activarla sin
+  // entrar al detalle.
   const warningTitle = [
-    isActive ? 'No se dispara sola: solo corre cuando pulsas "Probar ahora".' : null,
+    isActive && !isAutomationTriggerConnected(automation.trigger, automation.actions)
+      ? 'No se dispara sola: solo corre cuando pulsas "Probar ahora".'
+      : null,
     hasUnconnectedActions ? 'Algún paso todavía no sale de verdad: falta conectar su canal.' : null,
   ]
     .filter(Boolean)

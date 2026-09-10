@@ -132,6 +132,31 @@ export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>(
   'solicitar_resena',
 ])
 
+/**
+ * `mensaje_entrante` dispara de verdad desde `conversation-pipeline.ts` — pero
+ * solo cuando no depende de clasificar la intención del mensaje (`config`
+ * vacío o solo con `channels`), o cuando la intención es "escalado" (ahí la
+ * señal ya la calcula `detectHandoff`, así que reutilizarla es gratis). Con
+ * intención "reserva" o "faq" seguiría necesitando clasificar el mensaje, que
+ * todavía no existe, así que esos siguen sin disparar solos. `cambio_estado`,
+ * `programado` e `inactividad` no tienen ningún camino conectado todavía.
+ *
+ * Un paso `responder_ia` tampoco dispara aquí aunque el resto encaje: ese
+ * mismo pipeline ya genera la respuesta directa a cada mensaje, así que
+ * lanzarlo también por la automatización duplicaría la respuesta. Debe
+ * coincidir con la exclusión de `fireImmediateIncomingMessageAutomations` en
+ * `supabase/functions/_shared/conversation-pipeline.ts`.
+ */
+export function isAutomationTriggerConnected(
+  trigger: { type: string; config: Record<string, unknown> },
+  actions: AutomationAction[],
+): boolean {
+  if (trigger.type !== 'mensaje_entrante') return false
+  if (actions.some((a) => a.type === 'responder_ia')) return false
+  const intent = trigger.config.intent
+  return !intent || intent === 'escalado'
+}
+
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   recepcionista: 'Recepcionista IA',
   comercial: 'Agente Comercial',

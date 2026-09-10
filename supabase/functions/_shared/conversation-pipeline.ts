@@ -10,6 +10,8 @@ import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { complete, isAnthropicConfigured } from './anthropic-client.ts'
 import { scoreLead, type ScoredMessage } from './lead-scoring.ts'
 import { generateRuleBasedReply, type RulesReplyFaq } from './rules-reply.ts'
+import { isConfigured as isN8nConfigured, n8n } from './n8n-client.ts'
+import { webhookPathFor } from './workflow-builder.ts'
 
 export interface ContactFields {
   name?: unknown
@@ -173,6 +175,92 @@ async function scoreAndSaveLead(
   }
 }
 
+interface IncomingMessageAutomation {
+  id: string
+  n8n_workflow_id: string | null
+  trigger: { type: string; config?: { channels?: string; intent?: string } }
+  actions: { type: string }[]
+}
+
+/**
+ * Automatizaciones activas de tipo "mensaje_entrante" para este negocio.
+ * Se consulta una sola vez por mensaje real y se reutiliza tanto para las
+ * que disparan en cuanto llega el mensaje como para las que dependen de
+ * `intent: 'escalado'`, que solo se sabe más abajo en `respondWithAgent`.
+ */
+async function fetchIncomingMessageAutomations(
+  admin: SupabaseClient,
+  businessId: string,
+): Promise<IncomingMessageAutomation[]> {
+  if (!isN8nConfigured) return []
+
+  const { data } = await admin
+    .from('automations')
+    .select('id, n8n_workflow_id, trigger, actions')
+    .eq('business_id', businessId)
+    .eq('status', 'activa')
+    .eq('trigger->>type', 'mensaje_entrante')
+    .not('n8n_workflow_id', 'is', null)
+
+  return (data ?? []) as IncomingMessageAutomation[]
+}
+
+/**
+ * Dispara una automatización por su webhook de n8n. Es best-effort a
+ * propósito: una automatización de más (o de menos) no puede tirar abajo la
+ * respuesta real al contacto, que es lo único que le importa a quien escribió.
+ */
+async function fireAutomation(
+  automation: IncomingMessageAutomation,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await n8n.trigger(webhookPathFor({ id: automation.id }), payload)
+  } catch (error) {
+    console.error(`No se pudo disparar la automatización ${automation.id} (mensaje_entrante)`, error)
+  }
+}
+
+/**
+ * Las automatizaciones "mensaje_entrante" sin `intent` (o solo con filtro de
+ * canal) son seguras de disparar en cuanto llega el mensaje: no dependen de
+ * saber cómo va a responder el agente. Las que sí tienen `intent` configurado
+ * ("reserva", "faq") necesitarían clasificar la intención del mensaje —
+ * todavía no implementado — así que se dejan fuera aquí a propósito; el
+ * intent "escalado" es la excepción, porque `detectHandoff` ya calcula
+ * exactamente esa señal más abajo, y se dispara desde ahí.
+ *
+ * Dos exclusiones más, para no introducir un bug al conectar esto:
+ * - Un paso `responder_ia` duplicaría la respuesta que este mismo pipeline ya
+ *   genera de forma directa para cada mensaje — el segundo mensaje del
+ *   agente quedaría huérfano en la conversación (nadie lo reenvía al canal
+ *   real) y además dobla el gasto de Claude por el mismo mensaje.
+ * - Sin exigir que sea el primer mensaje de la conversación, una automatización
+ *   como "avisa al equipo cuando alguien contacta" avisaría en cada mensaje
+ *   de una conversación larga, no solo cuando de verdad es un contacto nuevo.
+ */
+async function fireImmediateIncomingMessageAutomations(
+  automations: IncomingMessageAutomation[],
+  channel: string,
+  isNewConversation: boolean,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!isNewConversation) return
+
+  const candidates = automations.filter(
+    (a) => !a.trigger.config?.intent && !a.actions.some((action) => action.type === 'responder_ia'),
+  )
+
+  await Promise.all(
+    candidates
+      .filter((a) => {
+        const configuredChannel = a.trigger.config?.channels
+        return !configuredChannel || configuredChannel === 'all' || configuredChannel === channel
+      })
+      .map((a) => fireAutomation(a, payload)),
+  )
+}
+
 export interface AgentReplyResult {
   conversationId: string
   leadId: string
@@ -213,6 +301,7 @@ export async function respondWithAgent(
   let conversationId = existingConversation?.id as string | undefined
   const handedOffAlready = existingConversation?.handled_by === 'humano'
   const handledSince = existingConversation?.handled_by_since ?? null
+  const isNewConversation = !conversationId
 
   if (!conversationId) {
     const { data: created, error } = await admin
@@ -230,6 +319,10 @@ export async function respondWithAgent(
     conversationId = created.id
   }
 
+  const incomingMessageAutomations = input.incomingText
+    ? await fetchIncomingMessageAutomations(admin, businessId)
+    : []
+
   if (input.incomingText) {
     await admin.from('messages').insert({
       conversation_id: conversationId,
@@ -237,6 +330,22 @@ export async function respondWithAgent(
       role: 'contacto',
       content: input.incomingText,
     })
+
+    await fireImmediateIncomingMessageAutomations(
+      incomingMessageAutomations,
+      input.channel,
+      isNewConversation,
+      {
+        ...input.payload,
+        businessId,
+        leadId,
+        conversationId,
+        channel: input.channel,
+        message: input.incomingText,
+        source: 'evento_real',
+        triggeredAt: new Date().toISOString(),
+      },
+    )
   }
 
   const { data: history } = await admin
@@ -359,6 +468,24 @@ export async function respondWithAgent(
   })
 
   if (shouldHandOff) {
+    await Promise.all(
+      incomingMessageAutomations
+        .filter((a) => a.trigger.config?.intent === 'escalado')
+        .map((a) =>
+          fireAutomation(a, {
+            ...input.payload,
+            businessId,
+            leadId,
+            conversationId,
+            channel: input.channel,
+            message: input.incomingText,
+            reason: shouldHandOff,
+            source: 'evento_real',
+            triggeredAt: new Date().toISOString(),
+          }),
+        ),
+    )
+
     await admin
       .from('conversations')
       .update({ handled_by: 'humano', status: 'pendiente' })

@@ -12,7 +12,11 @@ import { ErrorState, LoadingState } from '@/components/shared/states'
 import { automationsRepository } from '@/services/repositories/automations.repository'
 import { automationService } from '@/services/system/automation.service'
 import { isN8nLive } from '@/services/n8n'
-import { AUTOMATION_CATEGORY_LABELS, UNCONNECTED_AUTOMATION_ACTIONS } from '@/domain/vocabulary'
+import {
+  AUTOMATION_CATEGORY_LABELS,
+  isAutomationTriggerConnected,
+  UNCONNECTED_AUTOMATION_ACTIONS,
+} from '@/domain/vocabulary'
 import { useBusiness } from '@/features/businesses/business-context'
 import { formatDateTime, formatRelative } from '@/lib/utils'
 import { AutomationStatusBadge } from './automation-status-badge'
@@ -176,11 +180,13 @@ export function AutomationDetailPage() {
                 Cuándo se activa
               </p>
               <p className="mt-1 text-sm">{automation.trigger.description}</p>
-              <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Este disparador no está conectado a ningún evento real todavía — la
-                automatización no se lanza sola. Solo se ejecuta cuando pulsas "Probar ahora".
-              </p>
+              {!isAutomationTriggerConnected(automation.trigger, automation.actions) && (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Este disparador no está conectado a ningún evento real todavía — la
+                  automatización no se lanza sola. Solo se ejecuta cuando pulsas "Probar ahora".
+                </p>
+              )}
             </div>
 
             <div className="mt-4 space-y-2">
