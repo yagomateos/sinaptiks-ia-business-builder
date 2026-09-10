@@ -23,6 +23,7 @@ import {
 } from '../_shared/auth.ts'
 import { complete, completeJson, userPrompt, type ClaudeMessage } from '../_shared/anthropic-client.ts'
 import { AGENT_TYPE_INFO, describeBusiness } from '../_shared/business-context.ts'
+import { searchKnowledge } from '../_shared/conversation-pipeline.ts'
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -241,7 +242,7 @@ async function generateReply(ctx: AuthContext, body: unknown) {
   // consulta no devuelve ninguna fila y el acceso queda cerrado sin más lógica.
   const { data: agent, error } = await ctx.db
     .from('ai_agents')
-    .select('id')
+    .select('id, business_id')
     .eq('id', agentId)
     .maybeSingle()
 
@@ -254,7 +255,19 @@ async function generateReply(ctx: AuthContext, body: unknown) {
     messages.push({ role: 'user', content: String(incomingMessage ?? '') })
   }
 
-  return complete({ system: systemPrompt, messages, effort: 'low', maxTokens: 700 })
+  // Misma consulta al conocimiento del negocio que usan los canales reales
+  // (n8n-callback, Telegram): si el simulador no la hiciera también, previsualizaría
+  // un agente que responde peor del que de verdad atenderá a los clientes.
+  const relevantKnowledge = await searchKnowledge(
+    ctx.db,
+    agent.business_id,
+    String(incomingMessage ?? messages[messages.length - 1]?.content ?? ''),
+  )
+  const system = relevantKnowledge
+    ? `${systemPrompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
+    : systemPrompt
+
+  return complete({ system, messages, effort: 'low', maxTokens: 700 })
 }
 
 function toClaudeMessages(history: { role: string; content: string }[]): ClaudeMessage[] {
