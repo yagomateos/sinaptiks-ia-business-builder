@@ -4,6 +4,7 @@
  */
 import type {
   AgentType,
+  AutomationAction,
   AutomationCategory,
   AutomationStatus,
   BrandVoice,
@@ -115,6 +116,21 @@ export const AUTOMATION_CATEGORY_LABELS: Record<AutomationCategory, string> = {
   reputacion: 'Reputación',
   administracion: 'Administración',
 }
+
+/**
+ * El paso se guarda y se marca como ejecutado, pero no sale nada de verdad
+ * todavía: n8n-callback no tiene conectado ese canal y solo deja una nota en
+ * el registro de actividad (ver `supabase/functions/n8n-callback/index.ts`).
+ * Esta lista tiene que coincidir con los `case` reales de ese switch — si se
+ * conecta un canal ahí, se quita el tipo de aquí en el mismo cambio.
+ */
+export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>([
+  'enviar_telegram',
+  'enviar_whatsapp',
+  'enviar_email',
+  'agendar_cita',
+  'solicitar_resena',
+])
 
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   recepcionista: 'Recepcionista IA',

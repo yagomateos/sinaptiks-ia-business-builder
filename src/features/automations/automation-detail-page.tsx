@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight, MessageSquare, Pause, Play, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ChevronRight, MessageSquare, Pause, Play, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +12,7 @@ import { ErrorState, LoadingState } from '@/components/shared/states'
 import { automationsRepository } from '@/services/repositories/automations.repository'
 import { automationService } from '@/services/system/automation.service'
 import { isN8nLive } from '@/services/n8n'
-import { AUTOMATION_CATEGORY_LABELS } from '@/domain/vocabulary'
+import { AUTOMATION_CATEGORY_LABELS, UNCONNECTED_AUTOMATION_ACTIONS } from '@/domain/vocabulary'
 import { useBusiness } from '@/features/businesses/business-context'
 import { formatDateTime, formatRelative } from '@/lib/utils'
 import { AutomationStatusBadge } from './automation-status-badge'
@@ -95,6 +95,9 @@ export function AutomationDetailPage() {
 
   const isActive = automation.status === 'activa'
   const executions = executionsQuery.data ?? []
+  const unconnectedActions = automation.actions.filter((action) =>
+    UNCONNECTED_AUTOMATION_ACTIONS.has(action.type),
+  )
 
   return (
     <div className="space-y-6">
@@ -148,6 +151,20 @@ export function AutomationDetailPage() {
         <Badge variant="secondary">{AUTOMATION_CATEGORY_LABELS[automation.category]}</Badge>
       </div>
 
+      {unconnectedActions.length > 0 && (
+        <div className="flex gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <p>
+            {unconnectedActions.length === automation.actions.length
+              ? 'Ningún paso de esta automatización sale todavía de verdad: '
+              : 'Algún paso de esta automatización no sale todavía de verdad: '}
+            se registra la ejecución, pero falta conectar el canal (
+            {unconnectedActions.map((a) => a.description).join(', ')}
+            ). No se lo prometas a tus clientes hasta que esté conectado.
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
@@ -165,17 +182,26 @@ export function AutomationDetailPage() {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Qué hace
               </p>
-              {automation.actions.map((action, index) => (
-                <div key={index} className="flex items-center gap-3 rounded-lg border p-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    {index + 1}
-                  </span>
-                  <p className="text-sm">{action.description}</p>
-                  {index < automation.actions.length - 1 && (
-                    <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                  )}
-                </div>
-              ))}
+              {automation.actions.map((action, index) => {
+                const isUnconnected = UNCONNECTED_AUTOMATION_ACTIONS.has(action.type)
+                return (
+                  <div key={index} className="flex items-center gap-3 rounded-lg border p-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {index + 1}
+                    </span>
+                    <p className="text-sm">{action.description}</p>
+                    {isUnconnected && (
+                      <Badge variant="warning" className="shrink-0 gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        Canal no conectado
+                      </Badge>
+                    )}
+                    {index < automation.actions.length - 1 && (
+                      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

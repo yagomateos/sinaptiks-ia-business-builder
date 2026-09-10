@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pause, Play, Workflow } from 'lucide-react'
+import { AlertTriangle, Pause, Play, Workflow } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,7 +11,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/shared/states'
 import { automationsRepository } from '@/services/repositories/automations.repository'
 import { automationService } from '@/services/system/automation.service'
-import { AUTOMATION_CATEGORY_LABELS } from '@/domain/vocabulary'
+import { AUTOMATION_CATEGORY_LABELS, UNCONNECTED_AUTOMATION_ACTIONS } from '@/domain/vocabulary'
 import type { Automation, AutomationStatus } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
 import { formatRelative } from '@/lib/utils'
@@ -119,12 +119,23 @@ function AutomationCard({ automation }: { automation: Automation }) {
   })
 
   const isActive = automation.status === 'activa'
+  const hasUnconnectedActions = automation.actions.some((action) =>
+    UNCONNECTED_AUTOMATION_ACTIONS.has(action.type),
+  )
 
   return (
     <Card className="flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <Badge variant="secondary">{AUTOMATION_CATEGORY_LABELS[automation.category]}</Badge>
-        <AutomationStatusBadge status={automation.status} />
+        <div className="flex items-center gap-1.5">
+          {hasUnconnectedActions && (
+            <AlertTriangle
+              className="h-3.5 w-3.5 text-warning"
+              title="Algún paso todavía no sale de verdad: falta conectar su canal."
+            />
+          )}
+          <AutomationStatusBadge status={automation.status} />
+        </div>
       </div>
 
       <Link to={`/app/automatizaciones/${automation.id}`} className="mt-4 min-w-0 flex-1 group">
