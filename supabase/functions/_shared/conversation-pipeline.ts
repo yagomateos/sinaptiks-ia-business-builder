@@ -9,6 +9,7 @@
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { complete, isAnthropicConfigured } from './anthropic-client.ts'
 import { scoreLead, type ScoredMessage } from './lead-scoring.ts'
+import { generateRuleBasedReply, type RulesReplyFaq } from './rules-reply.ts'
 
 export interface ContactFields {
   name?: unknown
@@ -269,17 +270,7 @@ export async function respondWithAgent(
   if (input.agentType) agentQuery = agentQuery.eq('type', input.agentType)
   const { data: agent } = await agentQuery.limit(1).maybeSingle()
 
-  if (!isAnthropicConfigured) {
-    await admin.from('messages').insert({
-      conversation_id: conversationId,
-      business_id: businessId,
-      role: 'sistema',
-      content: 'Conecta un modelo de IA para que este agente responda automáticamente.',
-    })
-    return { conversationId, leadId, reply: null, reason: 'IA no configurada' }
-  }
-
-  if (!agent?.system_prompt) {
+  if (!agent) {
     return { conversationId, leadId, reply: null, reason: 'Sin agente activo que responda' }
   }
 
@@ -294,18 +285,47 @@ export async function respondWithAgent(
     claudeMessages.push({ role: 'user', content: input.incomingText || 'Hola' })
   }
 
-  const relevantKnowledge = await searchKnowledge(admin, businessId, input.incomingText)
-  const system = relevantKnowledge
-    ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
-    : agent.system_prompt
+  let reply: string
+  let repliedWithAi: boolean
 
-  const reply = await complete({ system, messages: claudeMessages, effort: 'low', maxTokens: 700 })
+  if (isAnthropicConfigured && agent.system_prompt) {
+    const relevantKnowledge = await searchKnowledge(admin, businessId, input.incomingText)
+    const system = relevantKnowledge
+      ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
+      : agent.system_prompt
+
+    reply = await complete({ system, messages: claudeMessages, effort: 'low', maxTokens: 700 })
+    repliedWithAi = true
+  } else {
+    // Sin clave de Claude configurada (o sin saldo), un negocio no debería
+    // quedarse mudo con sus clientes: se responde con el mismo motor
+    // determinista que ya usa el simulador cuando no hay IA de pago activa.
+    const [{ data: profile }, { data: services }] = await Promise.all([
+      admin.from('business_profiles').select('business_name, faq').eq('business_id', businessId).maybeSingle(),
+      admin
+        .from('services')
+        .select('name, description, price, currency, duration_minutes, is_active')
+        .eq('business_id', businessId),
+    ])
+
+    reply = generateRuleBasedReply({
+      incomingText: input.incomingText,
+      businessName: profile?.business_name ?? 'nuestro negocio',
+      faq: (profile?.faq as RulesReplyFaq[] | null) ?? [],
+      services: services ?? [],
+      escalationMessage:
+        (agent.handoff_rules as { escalation_message?: string } | null)?.escalation_message ??
+        'Te contactaremos en breve.',
+    })
+    repliedWithAi = false
+  }
 
   await admin.from('messages').insert({
     conversation_id: conversationId,
     business_id: businessId,
     role: 'agente_ia',
     content: reply,
+    metadata: repliedWithAi ? {} : { source: 'reglas' },
   })
 
   // El agente promete en su propio prompt "te escribirán en breve" cuando
