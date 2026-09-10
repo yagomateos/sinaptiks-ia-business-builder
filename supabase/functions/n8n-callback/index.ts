@@ -365,13 +365,18 @@ async function respondWithAgent(
   }
 
   // Qué agente responde: el que pida la automatización, o el primero activo.
+  // Siempre exigiendo que esté activo — si el que pide la automatización está
+  // en pausa, no se usa igualmente ni se sustituye por otro de otro tipo, que
+  // hablaría con la personalidad y el objetivo equivocados. Pausar un agente
+  // desde Agentes IA tiene que detenerlo de verdad, también aquí.
   const agentType = actionConfig.agent ? String(actionConfig.agent) : null
   let agentQuery = admin
     .from('ai_agents')
     .select('id, system_prompt, status')
     .eq('business_id', businessId)
+    .eq('status', 'activo')
 
-  agentQuery = agentType ? agentQuery.eq('type', agentType) : agentQuery.eq('status', 'activo')
+  if (agentType) agentQuery = agentQuery.eq('type', agentType)
   const { data: agent } = await agentQuery.limit(1).maybeSingle()
 
   if (!isAnthropicConfigured) {
