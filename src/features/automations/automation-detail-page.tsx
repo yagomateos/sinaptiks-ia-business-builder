@@ -117,7 +117,11 @@ export function AutomationDetailPage() {
         description={automation.description ?? undefined}
         actions={
           <>
-            {isActive && (
+            {/* "programado" no tiene webhook en el workflow (n8n dispara su
+                propio nodo de horario, ver buildTriggerNode) — el backend ya
+                rechaza probarlo a mano con un error claro; mejor no ofrecer
+                el botón que lo confirma con uno confuso. */}
+            {isActive && automation.trigger.type !== 'programado' && (
               <Button
                 variant="outline"
                 size="sm"
@@ -185,6 +189,12 @@ export function AutomationDetailPage() {
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   Este disparador no está conectado a ningún evento real todavía — la
                   automatización no se lanza sola. Solo se ejecuta cuando pulsas "Probar ahora".
+                </p>
+              )}
+              {automation.trigger.type === 'programado' && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Se ejecuta sola según este horario — no se puede lanzar a mano, por eso no hay
+                  botón de "Probar ahora" aquí.
                 </p>
               )}
             </div>

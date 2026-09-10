@@ -36,7 +36,19 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text()
-    throw new AppError('El motor de automatización ha devuelto un error.', body)
+    // Las Edge Functions devuelven {"error": "mensaje concreto"} (ver
+    // errorResponse en supabase/functions/_shared/auth.ts) — sin esto, un
+    // error específico y útil (p. ej. "esto se ejecuta solo, no se puede
+    // lanzar a mano") se descartaba y el usuario solo veía un genérico que
+    // no explica nada.
+    const parsedMessage = (() => {
+      try {
+        return (JSON.parse(body) as { error?: string }).error
+      } catch {
+        return undefined
+      }
+    })()
+    throw new AppError(parsedMessage ?? 'El motor de automatización ha devuelto un error.', body)
   }
 
   return (await response.json()) as T
