@@ -356,7 +356,11 @@ function AddKnowledgeDialog({
       setError('Escribe la dirección de la página.')
       return
     }
-    if (sourceType !== 'url' && content.trim().length < 10) {
+    if (sourceType === 'txt' && content.trim().length < 10) {
+      setError('Sube un archivo .txt con algo de texto dentro.')
+      return
+    }
+    if (sourceType !== 'url' && sourceType !== 'txt' && content.trim().length < 10) {
       setError('Escribe algo de contenido.')
       return
     }
@@ -400,6 +404,7 @@ function AddKnowledgeDialog({
                 <SelectItem value="texto">Texto escrito por mí</SelectItem>
                 <SelectItem value="faq">Preguntas frecuentes</SelectItem>
                 <SelectItem value="url">Página web</SelectItem>
+                <SelectItem value="txt">Archivo de texto (.txt)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -417,6 +422,27 @@ function AddKnowledgeDialog({
               <p className="text-xs text-muted-foreground">
                 Leeremos el texto de esta página en cuanto pulses "Procesar".
               </p>
+            </div>
+          ) : sourceType === 'txt' ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="docFile">Archivo</Label>
+              <Input
+                id="docFile"
+                type="file"
+                accept=".txt,text/plain"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await file.text()
+                  setContent(text)
+                  if (!title.trim()) setTitle(file.name.replace(/\.txt$/i, ''))
+                }}
+              />
+              {content && (
+                <p className="text-xs text-muted-foreground">
+                  {content.length.toLocaleString('es-ES')} caracteres leídos.
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-1.5">
