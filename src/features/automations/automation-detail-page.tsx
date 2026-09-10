@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronRight, MessageSquare, Pause, Play, Zap } from 'lucide-react'
@@ -35,6 +36,23 @@ export function AutomationDetailPage() {
   })
 
   const automation = query.data
+
+  // El botón de activar/pausar es el único camino que mantiene sincronizado
+  // el estado guardado con el de n8n — pero el workflow puede haber cambiado
+  // por otra vía (se desactivó directamente en n8n, o se activó a mano fuera
+  // de la app). Se comprueba una vez por visita a la ficha, no en cada
+  // render de la lista, para no multiplicar llamadas al motor.
+  const syncedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!automation?.n8n_workflow_id || syncedRef.current === automation.id) return
+    syncedRef.current = automation.id
+
+    automationService.syncStatus(automation).then((synced) => {
+      if (synced.status !== automation.status) {
+        queryClient.setQueryData(['automation', automationId], synced)
+      }
+    })
+  }, [automation, automationId, queryClient])
 
   const toggle = useMutation({
     mutationFn: async () => {
