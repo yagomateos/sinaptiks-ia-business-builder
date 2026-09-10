@@ -180,18 +180,37 @@ cuerpo de la petición, para que el cliente no pueda inventarse acciones.
 | Avisar al equipo | ✅ real |
 | Esperar X horas | ✅ real (lo hace n8n) |
 | Agente responde | ✅ real — crea la conversación, consulta lo que subiste a Conocimiento, y responde con Claude si hay clave configurada |
-| Telegram / email / agendar cita | registra el paso, no envía todavía |
+| Telegram (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |
+| Email / agendar cita | registra el paso, no envía todavía |
 
 Las últimas no envían nada a propósito: sin esos canales conectados, es
 preferible dejar constancia del paso a fingir un mensaje que nadie recibe.
 
 ### Canal de mensajería: Telegram, no WhatsApp
 
-El canal principal es **Telegram** — solo necesita un token de bot (gratis, en
-segundos, con [@BotFather](https://t.me/BotFather)), sin verificación de
-empresa. WhatsApp Business API exige ese trámite con Meta, así que queda fuera
-del marketplace por ahora; sigue siendo un proveedor válido en el modelo de
-datos, listo para cuando se retome.
+El canal principal es **Telegram**, no WhatsApp. WhatsApp Business API exige
+verificación de empresa con Meta — un trámite que solo puede abrir el propio
+negocio; queda fuera del marketplace por ahora, aunque sigue siendo un
+proveedor válido en el modelo de datos, listo para cuando se retome.
+
+Telegram, en cambio, está completamente conectado — solo falta el paso que le
+toca a cada negocio:
+
+1. En **Canales**, pulsa *Conectar* en la tarjeta de Telegram
+2. Habla con [@BotFather](https://t.me/BotFather) en Telegram → `/newbot` →
+   te da un token en segundos, sin coste ni verificación
+3. Pega el token en el formulario
+
+A partir de ahí: cada mensaje real a ese bot crea o continúa la conversación
+del contacto, consulta lo que el negocio subió a Conocimiento, genera la
+respuesta con el agente activo que corresponda y la envía de vuelta por
+Telegram — el mismo camino, verificado, que ya usan las automatizaciones.
+
+El token nunca se vuelve a leer después de guardarse: `channel_credentials`
+es una tabla sin política de lectura para nadie sujeto a RLS, solo escritura;
+únicamente la Edge Function del webhook (con la service role) puede
+recuperarlo, y solo a través de una función de base de datos dedicada y
+bloqueada al resto de roles.
 
 ---
 

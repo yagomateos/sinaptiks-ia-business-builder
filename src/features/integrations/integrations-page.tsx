@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AtSign,
@@ -6,6 +7,7 @@ import {
   Camera,
   CreditCard,
   Database,
+  ExternalLink,
   MessageCircle,
   Mic,
   Send,
@@ -18,9 +20,20 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, ErrorState } from '@/components/shared/states'
 import { integrationsRepository } from '@/services/repositories/integrations.repository'
+import { telegramService } from '@/services/channels/telegram.service'
 import { isN8nLive } from '@/services/n8n'
 import {
   INTEGRATION_DESCRIPTIONS,
@@ -159,10 +172,14 @@ function IntegrationCard({
 }) {
   const queryClient = useQueryClient()
   const Icon = PROVIDER_ICONS[provider]
+  const [connectOpen, setConnectOpen] = useState(false)
 
   // El motor lo configura la plataforma, no cada negocio: su estado real es si
   // hay backend detrás, no lo que diga la fila de la base de datos.
   const isEngine = provider === 'n8n'
+  // Telegram guarda una credencial real (el token del bot) y de verdad envía
+  // mensajes al conectarse — no solo apunta la intención como el resto.
+  const isTelegram = provider === 'telegram'
   const status: IntegrationStatus = isEngine
     ? isN8nLive
       ? 'conectado'
@@ -191,6 +208,16 @@ function IntegrationCard({
       toast.error(error instanceof Error ? error.message : 'No hemos podido cambiar la conexión.'),
   })
 
+  const disconnectTelegram = useMutation({
+    mutationFn: () => telegramService.disconnect(businessId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
+      toast.success('Telegram desconectado')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido desconectar Telegram.'),
+  })
+
   return (
     <Card className="flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
@@ -205,6 +232,11 @@ function IntegrationCard({
         <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
           {INTEGRATION_DESCRIPTIONS[provider]}
         </p>
+        {isTelegram && typeof integration?.config?.bot_username === 'string' && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Conectado como @{integration.config.bot_username}
+          </p>
+        )}
         {integration?.connected_at && (
           <p className="mt-2 text-[11px] text-muted-foreground">
             Conectado {formatRelative(integration.connected_at)}
@@ -213,7 +245,7 @@ function IntegrationCard({
         {integration?.last_error && (
           <p className="mt-2 text-xs text-destructive">{integration.last_error}</p>
         )}
-        {status === 'conectando' && (
+        {status === 'conectando' && !isTelegram && (
           <p className="mt-2 text-xs text-muted-foreground">
             Te avisaremos en cuanto esté disponible.
           </p>
@@ -226,6 +258,23 @@ function IntegrationCard({
             ? 'Lo gestiona Sinaptkis. Tus automatizaciones ya se ejecutan de verdad.'
             : 'Lo gestiona Sinaptkis. Todavía no está activo en tu cuenta.'}
         </p>
+      ) : isTelegram ? (
+        <>
+          <Button
+            variant={status === 'conectado' ? 'outline' : 'default'}
+            size="sm"
+            className="mt-4 w-full"
+            loading={disconnectTelegram.isPending}
+            onClick={() => (status === 'conectado' ? disconnectTelegram.mutate() : setConnectOpen(true))}
+          >
+            {status === 'conectado' ? 'Desconectar' : 'Conectar'}
+          </Button>
+          <ConnectTelegramDialog
+            open={connectOpen}
+            onOpenChange={setConnectOpen}
+            businessId={businessId}
+          />
+        </>
       ) : (
         <Button
           variant={status === 'conectado' ? 'outline' : 'default'}
@@ -242,5 +291,106 @@ function IntegrationCard({
         </Button>
       )}
     </Card>
+  )
+}
+
+function ConnectTelegramDialog({
+  open,
+  onOpenChange,
+  businessId,
+}: {
+  open: boolean
+  onOpenChange(open: boolean): void
+  businessId: string
+}) {
+  const queryClient = useQueryClient()
+  const [botToken, setBotToken] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const connect = useMutation({
+    mutationFn: () => telegramService.connect(businessId, botToken.trim()),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
+      toast.success(`Telegram conectado — tu bot es @${result.botUsername}`)
+      setBotToken('')
+      onOpenChange(false)
+    },
+    onError: (caught) =>
+      setError(caught instanceof Error ? caught.message : 'No hemos podido conectar Telegram.'),
+  })
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!botToken.trim()) {
+      setError('Pega el token que te da BotFather.')
+      return
+    }
+    setError(null)
+    connect.mutate()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Conectar Telegram</DialogTitle>
+          <DialogDescription>
+            Necesitas un bot de Telegram. Se crea gratis y en menos de un minuto.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-lg border bg-secondary/40 p-3 text-xs leading-relaxed text-muted-foreground">
+          <p className="font-medium text-foreground">Cómo conseguir el token</p>
+          <ol className="mt-1.5 list-decimal space-y-1 pl-4">
+            <li>
+              Abre{' '}
+              <a
+                href="https://t.me/BotFather"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                @BotFather en Telegram
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </li>
+            <li>
+              Escríbele <code className="rounded bg-background px-1 py-0.5">/newbot</code> y sigue
+              sus instrucciones
+            </li>
+            <li>Te dará un token — pégalo aquí abajo</li>
+          </ol>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div className="space-y-1.5">
+            <Label htmlFor="botToken">Token del bot</Label>
+            <Input
+              id="botToken"
+              type="password"
+              autoComplete="off"
+              value={botToken}
+              onChange={(e) => setBotToken(e.target.value)}
+              placeholder="123456789:AAExampleTokenFromBotFather"
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              No se guarda en texto plano visible ni vuelve a mostrarse una vez conectado.
+            </p>
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={connect.isPending}>
+              Conectar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

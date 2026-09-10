@@ -12,7 +12,11 @@
  * registran pasarán a enviar de verdad: el contrato con n8n no cambia.
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { complete, isAnthropicConfigured } from '../_shared/anthropic-client.ts'
+import {
+  findConversationId,
+  findOrCreateLead,
+  respondWithAgent,
+} from '../_shared/conversation-pipeline.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -82,7 +86,7 @@ Deno.serve(async (request) => {
     // idéntico a como cualquier paso encontraría al mismo contacto — para
     // poder enlazarla desde el historial sin tener que ir a buscarla.
     if (body.isLastStep) {
-      const conversationId = await findConversationId(businessId, body.payload)
+      const conversationId = await findConversationId(admin, businessId, body.payload)
 
       await admin.from('automation_executions').insert({
         automation_id: automationId,
@@ -135,12 +139,31 @@ async function performAction(body: CallbackBody, automationName: string): Promis
 
   switch (actionType) {
     case 'crear_lead': {
-      const { id, created } = await findOrCreateLead(businessId, payload, actionConfig)
+      const { id, created } = await findOrCreateLead(
+        admin,
+        businessId,
+        payload,
+        String(actionConfig.stage ?? 'nuevo'),
+      )
       return created ? `Contacto creado (${id})` : `El contacto ya existía (${id})`
     }
 
-    case 'responder_ia':
-      return await respondWithAgent(businessId, actionConfig, payload)
+    case 'responder_ia': {
+      const incomingText = String(payload?.message ?? payload?.text ?? payload?.mensaje ?? '').trim()
+      const channel = String(payload?.channel ?? payload?.canal ?? 'web')
+      const agentType = actionConfig.agent ? String(actionConfig.agent) : null
+
+      const result = await respondWithAgent(admin, businessId, {
+        payload,
+        incomingText,
+        channel,
+        agentType,
+      })
+
+      return result.reply
+        ? `Agente respondió (conversación ${result.conversationId})`
+        : `Conversación registrada, ${result.reason} (${result.conversationId})`
+    }
 
     case 'actualizar_lead': {
       // Si el paso trae un id explícito se usa tal cual; si no, se localiza
@@ -149,7 +172,7 @@ async function performAction(body: CallbackBody, automationName: string): Promis
       const explicitId = payload?.leadId ?? payload?.lead_id
       const leadId = explicitId
         ? String(explicitId)
-        : (await findOrCreateLead(businessId, payload, actionConfig)).id
+        : (await findOrCreateLead(admin, businessId, payload)).id
 
       if (!leadId) return 'Sin contacto que actualizar'
 
@@ -180,8 +203,8 @@ async function performAction(body: CallbackBody, automationName: string): Promis
     }
 
     default: {
-      // enviar_whatsapp, enviar_email, agendar_cita, solicitar_resena:
-      // pendientes de conectar su canal.
+      // enviar_telegram, enviar_whatsapp, enviar_email, agendar_cita,
+      // solicitar_resena: pendientes de conectar su canal.
       await admin.from('activity_logs').insert({
         business_id: businessId,
         actor_label: 'Automatización',
@@ -214,261 +237,4 @@ function describePayload(payload: Record<string, unknown> | undefined): string {
   const channel = payload.channel ?? payload.canal
   const parts = [name ? `Contacto: ${name}` : null, channel ? `Canal: ${channel}` : null]
   return parts.filter(Boolean).join(' · ') || 'Sin datos adicionales'
-}
-
-/**
- * Busca (sin crear) la conversación abierta del contacto que trajo esta
- * ejecución. Es de solo lectura a propósito: si ningún paso llegó a hablar
- * con nadie, no hay nada que enlazar, y eso está bien.
- */
-async function findConversationId(
-  businessId: string,
-  payload: Record<string, unknown> | undefined,
-): Promise<string | null> {
-  const email = payload?.email ? String(payload.email) : null
-  const phoneRaw = payload?.phone ?? payload?.telefono
-  const phone = phoneRaw ? String(phoneRaw) : null
-  const channel = String(payload?.channel ?? payload?.canal ?? 'web')
-
-  if (!email && !phone) return null
-
-  const { data: lead } = await admin
-    .from('leads')
-    .select('id')
-    .eq('business_id', businessId)
-    .or([email ? `email.eq.${email}` : '', phone ? `phone.eq.${phone}` : '']
-      .filter(Boolean)
-      .join(','))
-    .maybeSingle()
-
-  if (!lead) return null
-
-  const { data: conversation } = await admin
-    .from('conversations')
-    .select('id')
-    .eq('business_id', businessId)
-    .eq('lead_id', lead.id)
-    .eq('channel', channel)
-    .order('last_message_at', { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle()
-
-  return conversation?.id ?? null
-}
-
-/* ------------------------------------------------------------------ */
-/* Contactos                                                           */
-/* ------------------------------------------------------------------ */
-
-interface LeadResult {
-  id: string
-  created: boolean
-}
-
-/**
- * Busca un contacto por email o teléfono antes de crearlo. La usan tanto
- * `crear_lead` como `responder_ia`: una persona que escribe por WhatsApp no
- * debería generar una ficha distinta cada vez que vuelve a escribir.
- */
-async function findOrCreateLead(
-  businessId: string,
-  payload: Record<string, unknown> | undefined,
-  actionConfig: Record<string, unknown>,
-): Promise<LeadResult> {
-  const name = String(payload?.name ?? payload?.nombre ?? 'Contacto sin nombre')
-  const email = payload?.email ? String(payload.email) : null
-  const phoneRaw = payload?.phone ?? payload?.telefono
-  const phone = phoneRaw ? String(phoneRaw) : null
-  const channel = String(payload?.channel ?? payload?.canal ?? 'web')
-
-  if (email || phone) {
-    const { data: existing } = await admin
-      .from('leads')
-      .select('id')
-      .eq('business_id', businessId)
-      .or([email ? `email.eq.${email}` : '', phone ? `phone.eq.${phone}` : '']
-        .filter(Boolean)
-        .join(','))
-      .maybeSingle()
-
-    if (existing) return { id: existing.id, created: false }
-  }
-
-  const { data, error } = await admin
-    .from('leads')
-    .insert({
-      business_id: businessId,
-      full_name: name,
-      email,
-      phone,
-      source: channel,
-      stage: String(actionConfig.stage ?? 'nuevo'),
-      temperature: 'templado',
-    })
-    .select('id')
-    .single()
-
-  if (error) throw new Error(`No se pudo crear el contacto: ${error.message}`)
-  return { id: data.id, created: true }
-}
-
-/**
- * Búsqueda por palabras clave sobre los documentos que el negocio ha subido y
- * procesado en "Conocimiento". Es la misma estrategia de respaldo que usa el
- * frontend mientras no haya una base vectorial real conectada (Qdrant): sin
- * un motor de embeddings de por medio, coincidencia de palabras es lo que hay
- * — mejor esto que un agente que nunca lea lo que el negocio le dio.
- */
-async function searchKnowledge(businessId: string, query: string): Promise<string | null> {
-  const terms = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length > 3)
-
-  if (terms.length === 0) return null
-
-  const { data } = await admin
-    .from('knowledge_chunks')
-    .select('content')
-    .eq('business_id', businessId)
-    .or(terms.map((t) => `content.ilike.%${t}%`).join(','))
-    .limit(12)
-
-  if (!data || data.length === 0) return null
-
-  const ranked = data
-    .map((row) => {
-      const content = row.content.toLowerCase()
-      const hits = terms.filter((t) => content.includes(t)).length
-      return { content: row.content as string, score: hits / terms.length }
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-
-  return ranked.map((r) => r.content).join('\n\n')
-}
-
-/* ------------------------------------------------------------------ */
-/* Respuesta de un agente                                              */
-/* ------------------------------------------------------------------ */
-
-/**
- * Registra la conversación real y, si hay un modelo configurado, genera la
- * respuesta del agente. Sin clave de Anthropic, la conversación se crea igual
- * — para que el negocio vea que alguien escribió — pero sin fingir una
- * respuesta automática que nadie generó.
- */
-async function respondWithAgent(
-  businessId: string,
-  actionConfig: Record<string, unknown>,
-  payload: Record<string, unknown> | undefined,
-): Promise<string> {
-  const incomingText = String(payload?.message ?? payload?.text ?? payload?.mensaje ?? '').trim()
-  const channel = String(payload?.channel ?? payload?.canal ?? 'web')
-
-  const { id: leadId } = await findOrCreateLead(businessId, payload, {})
-
-  // Una conversación abierta por canal y contacto; si ya hay una, se reutiliza
-  // en vez de abrir un hilo nuevo por cada mensaje.
-  const { data: existingConversation } = await admin
-    .from('conversations')
-    .select('id')
-    .eq('business_id', businessId)
-    .eq('lead_id', leadId)
-    .eq('channel', channel)
-    .neq('status', 'cerrada')
-    .maybeSingle()
-
-  let conversationId = existingConversation?.id as string | undefined
-
-  if (!conversationId) {
-    const { data: created, error } = await admin
-      .from('conversations')
-      .insert({ business_id: businessId, lead_id: leadId, channel, handled_by: 'agente_ia' })
-      .select('id')
-      .single()
-
-    if (error) throw new Error(`No se pudo crear la conversación: ${error.message}`)
-    conversationId = created.id
-  }
-
-  if (incomingText) {
-    await admin.from('messages').insert({
-      conversation_id: conversationId,
-      business_id: businessId,
-      role: 'contacto',
-      content: incomingText,
-    })
-  }
-
-  // Qué agente responde: el que pida la automatización, o el primero activo.
-  // Siempre exigiendo que esté activo — si el que pide la automatización está
-  // en pausa, no se usa igualmente ni se sustituye por otro de otro tipo, que
-  // hablaría con la personalidad y el objetivo equivocados. Pausar un agente
-  // desde Agentes IA tiene que detenerlo de verdad, también aquí.
-  const agentType = actionConfig.agent ? String(actionConfig.agent) : null
-  let agentQuery = admin
-    .from('ai_agents')
-    .select('id, system_prompt, status')
-    .eq('business_id', businessId)
-    .eq('status', 'activo')
-
-  if (agentType) agentQuery = agentQuery.eq('type', agentType)
-  const { data: agent } = await agentQuery.limit(1).maybeSingle()
-
-  if (!isAnthropicConfigured) {
-    await admin.from('messages').insert({
-      conversation_id: conversationId,
-      business_id: businessId,
-      role: 'sistema',
-      content: 'Conecta un modelo de IA para que este agente responda automáticamente.',
-    })
-    return `Conversación registrada, pendiente de conectar la IA (${conversationId})`
-  }
-
-  if (!agent?.system_prompt) {
-    return `Conversación registrada, sin agente activo que responda (${conversationId})`
-  }
-
-  const { data: history } = await admin
-    .from('messages')
-    .select('role, content')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
-    .limit(20)
-
-  const claudeMessages = (history ?? [])
-    .filter((m) => m.role !== 'sistema')
-    .map((m) => ({
-      role: (m.role === 'contacto' ? 'user' : 'assistant') as const,
-      content: m.content,
-    }))
-
-  if (claudeMessages.length === 0 || claudeMessages[claudeMessages.length - 1].role !== 'user') {
-    claudeMessages.push({ role: 'user', content: incomingText || 'Hola' })
-  }
-
-  // Lo que suba el negocio a "Conocimiento" tiene que servir para algo: se
-  // añade al prompt solo para esta respuesta, sin tocar el system_prompt
-  // guardado del agente, que sigue siendo el que se ve y se edita en su ficha.
-  const relevantKnowledge = await searchKnowledge(businessId, incomingText)
-  const system = relevantKnowledge
-    ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
-    : agent.system_prompt
-
-  const reply = await complete({
-    system,
-    messages: claudeMessages,
-    effort: 'low',
-    maxTokens: 700,
-  })
-
-  await admin.from('messages').insert({
-    conversation_id: conversationId,
-    business_id: businessId,
-    role: 'agente_ia',
-    content: reply,
-  })
-
-  return `Agente respondió (conversación ${conversationId})`
 }

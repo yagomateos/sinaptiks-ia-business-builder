@@ -432,3 +432,13 @@ verify_jwt = false
 # Puente hacia Claude. La llama siempre una persona con sesión iniciada.
 [functions.ai]
 verify_jwt = true
+
+# Conectar/desconectar canales (Telegram). La llama una persona con sesión.
+[functions.channels]
+verify_jwt = true
+
+# Telegram llama aquí directamente — no hay sesión de usuario posible. Se
+# autentica con el secreto de la URL más el secret_token que Telegram firma
+# en la cabecera (ver telegram-webhook/index.ts).
+[functions.telegram-webhook]
+verify_jwt = false
