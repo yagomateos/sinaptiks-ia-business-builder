@@ -288,6 +288,13 @@ const REGISTER_APPOINTMENT_TOOL = {
       nombre: { type: 'string', description: 'Nombre del cliente, si lo dio' },
       servicio: { type: 'string', description: 'Servicio o tratamiento que pide' },
       fecha_hora_preferida: { type: 'string', description: 'Cuándo le viene bien, tal cual lo dijo' },
+      fecha_hora_iso: {
+        type: 'string',
+        description:
+          'La misma fecha/hora convertida a formato ISO 8601 (AAAA-MM-DDTHH:mm:00), calculada a ' +
+          'partir de la fecha de hoy que se te da en el prompt. Necesaria para poder recordarle la ' +
+          'cita 24h antes — sin esto no se le puede avisar.',
+      },
       telefono: { type: 'string' },
       email: { type: 'string' },
     },
@@ -332,12 +339,21 @@ async function registerAppointmentRequest(
   const noteLine = `Pidió cita: ${servicio} — ${fechaHora}${telefono ? ` (tel: ${telefono})` : ''}`
   const notes = [currentLead?.notes, noteLine].filter(Boolean).join('\n')
 
+  // Sin una fecha real no hay forma de saber cuándo faltan 24h para la cita
+  // — "Recordar citas" (automation_broadcast_dispatch) depende de esto.
+  // Se valida en JS porque un ISO mal formado de Claude no debe tirar abajo
+  // el registro de la solicitud.
+  const fechaHoraIso = args.fecha_hora_iso ? String(args.fecha_hora_iso) : null
+  const parsedDate = fechaHoraIso ? new Date(fechaHoraIso) : null
+  const nextActionAt = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null
+
   await admin
     .from('leads')
     .update({
       ...(email ? { email } : {}),
       notes,
       next_action: `Confirmar cita: ${servicio} — ${fechaHora}`,
+      next_action_at: nextActionAt,
       stage: 'cita',
       temperature: 'caliente',
     })
@@ -566,11 +582,20 @@ export async function respondWithAgent(
       // herramienta, que es lo único que avisa de verdad. La descripción de
       // la herramienta sola no basta para competir con un guion completo ya
       // escrito en el prompt.
+      const today = new Date()
+      const todayLabel = new Intl.DateTimeFormat('es-ES', {
+        timeZone: 'Europe/Madrid',
+        weekday: 'long',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(today)
+
       const system = `${agent.system_prompt}${
         relevantKnowledge
           ? `\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
           : ''
-      }\n\n---\n\nEn cuanto tengas el servicio, la fecha/hora preferida y un teléfono o email de contacto, llama a la herramienta registrar_solicitud_cita antes de despedirte — decirlo en el texto no avisa a nadie de verdad, solo la llamada a la herramienta lo hace.`
+      }\n\n---\n\nHoy es ${todayLabel} (zona horaria Europe/Madrid). Úsalo para calcular fechas relativas ("mañana", "pasado mañana", "el jueves") en formato ISO cuando llames a una herramienta que lo pida.\n\nEn cuanto tengas el servicio, la fecha/hora preferida y un teléfono o email de contacto, llama a la herramienta registrar_solicitud_cita antes de despedirte — decirlo en el texto no avisa a nadie de verdad, solo la llamada a la herramienta lo hace.`
 
       const tools = [REGISTER_APPOINTMENT_TOOL]
       const first = await completeWithTools({

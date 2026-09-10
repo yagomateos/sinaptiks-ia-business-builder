@@ -17,6 +17,7 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respondWithAgent } from '../_shared/conversation-pipeline.ts'
+import { sendTelegramMessage } from '../_shared/telegram-client.ts'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -113,15 +114,3 @@ Deno.serve(async (request) => {
 
   return new Response('ok')
 })
-
-async function sendTelegramMessage(botToken: string, chatId: number, text: string): Promise<void> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  })
-
-  if (!response.ok) {
-    console.error('Telegram sendMessage falló', await response.text())
-  }
-}

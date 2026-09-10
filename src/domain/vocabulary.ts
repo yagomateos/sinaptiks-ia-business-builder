@@ -125,7 +125,6 @@ export const AUTOMATION_CATEGORY_LABELS: Record<AutomationCategory, string> = {
  * conecta un canal ahí, se quita el tipo de aquí en el mismo cambio.
  */
 export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>([
-  'enviar_telegram',
   'enviar_whatsapp',
   'enviar_email',
   'agendar_cita',

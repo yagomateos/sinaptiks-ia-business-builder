@@ -11,12 +11,13 @@
  * Cuando se conecten WhatsApp o el calendario, las acciones que hoy solo
  * registran pasarán a enviar de verdad: el contrato con n8n no cambia.
  */
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
   findConversationId,
   findOrCreateLead,
   respondWithAgent,
 } from '../_shared/conversation-pipeline.ts'
+import { sendTelegramMessage } from '../_shared/telegram-client.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -66,7 +67,7 @@ Deno.serve(async (request) => {
   // comprobación, un secreto filtrado permitiría escribir en cualquier negocio.
   const { data: automation } = await admin
     .from('automations')
-    .select('id, name, business_id, actions')
+    .select('id, name, business_id, actions, trigger')
     .eq('id', automationId)
     .eq('business_id', businessId)
     .maybeSingle()
@@ -77,7 +78,11 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const detail = await performAction(body, automation.name)
+    const detail = await performAction(
+      body,
+      automation.name,
+      automation.trigger as { type: string; config?: Record<string, unknown> },
+    )
 
     // Solo se registra una ejecución por disparo, no una por paso. La
     // conversación puede haberla creado un paso anterior (cada paso es una
@@ -163,10 +168,26 @@ Deno.serve(async (request) => {
  * pase nada a fingir que se envió un mensaje que nadie recibió — el mismo
  * principio que sigue `responder_ia` cuando no hay un modelo configurado.
  */
-async function performAction(body: CallbackBody, automationName: string): Promise<string> {
+async function performAction(
+  body: CallbackBody,
+  automationName: string,
+  trigger: { type: string; config?: Record<string, unknown> },
+): Promise<string> {
   const { businessId, actionType, actionConfig, payload } = body
 
   switch (actionType) {
+    case 'enviar_telegram': {
+      // Un mensaje_entrante o cambio_estado ya conectado trae el contacto
+      // concreto en el payload (ver conversation-pipeline.ts) — se le
+      // manda a él directamente. Un "programado" no trae ningún contacto
+      // (el disparador de horario de n8n no sabe de leads): hay que ir a
+      // buscar a quién le toca según la condición del disparador.
+      const directPhone = String(payload?.phone ?? payload?.telefono ?? '')
+      if (directPhone.startsWith('tg:')) {
+        return await sendTelegramToOneLead(admin, businessId, directPhone, automationName)
+      }
+      return await sendTelegramBroadcast(admin, businessId, trigger, automationName)
+    }
     case 'crear_lead': {
       const { id, created } = await findOrCreateLead(
         admin,
@@ -232,8 +253,8 @@ async function performAction(body: CallbackBody, automationName: string): Promis
     }
 
     default: {
-      // enviar_telegram, enviar_whatsapp, enviar_email, agendar_cita,
-      // solicitar_resena: pendientes de conectar su canal.
+      // enviar_whatsapp, enviar_email, agendar_cita, solicitar_resena:
+      // pendientes de conectar su canal.
       await admin.from('activity_logs').insert({
         business_id: businessId,
         actor_label: 'Automatización',
@@ -249,11 +270,141 @@ async function performAction(body: CallbackBody, automationName: string): Promis
 }
 
 const ACTION_DESCRIPTIONS: Record<string, string> = {
-  enviar_telegram: 'mensaje de Telegram pendiente de enviar',
   enviar_whatsapp: 'mensaje de WhatsApp pendiente de enviar',
   enviar_email: 'email pendiente de enviar',
   agendar_cita: 'cita pendiente de agendar',
   solicitar_resena: 'solicitud de reseña pendiente',
+}
+
+/** Envía a un contacto concreto (payload trae su phone `tg:<chat_id>`). */
+async function sendTelegramToOneLead(
+  admin: SupabaseClient,
+  businessId: string,
+  phone: string,
+  automationName: string,
+): Promise<string> {
+  const botToken = await getTelegramBotToken(admin, businessId)
+  if (!botToken) return 'Sin bot de Telegram conectado para este negocio'
+
+  const chatId = phone.slice('tg:'.length)
+  const businessName = await getBusinessName(admin, businessId)
+
+  await sendTelegramMessage(
+    botToken,
+    chatId,
+    `Hola, te escribimos de ${businessName}: ${automationName}.`,
+  )
+  return 'Mensaje de Telegram enviado'
+}
+
+/**
+ * "programado" no trae ningún contacto — el nodo de horario de n8n se
+ * dispara solo, sin saber de leads (ver workflow-builder.ts). Aquí se busca
+ * a quién le toca según la condición del propio disparador:
+ * - `offset_hours` (p. ej. -24): leads con cita para ese día concreto.
+ * - `inactive_days`: leads sin contacto desde hace ese tiempo.
+ * `last_reminder_sent_at` evita mandar el mismo aviso dos veces por la misma
+ * cita o el mismo periodo de inactividad.
+ */
+async function sendTelegramBroadcast(
+  admin: SupabaseClient,
+  businessId: string,
+  trigger: { type: string; config?: Record<string, unknown> },
+  automationName: string,
+): Promise<string> {
+  const botToken = await getTelegramBotToken(admin, businessId)
+  if (!botToken) return 'Sin bot de Telegram conectado para este negocio'
+
+  const businessName = await getBusinessName(admin, businessId)
+  const offsetHours = trigger.config?.offset_hours
+  const inactiveDays = trigger.config?.inactive_days
+
+  let candidates: { id: string; full_name: string; phone: string | null; last_reminder_sent_at: string | null; reference: string }[] = []
+  let message: (nombre: string) => string
+
+  if (typeof offsetHours === 'number') {
+    const hoursAhead = Math.abs(offsetHours)
+    const target = new Date(Date.now() + hoursAhead * 60 * 60 * 1000)
+    const dayStart = new Date(target)
+    dayStart.setUTCHours(0, 0, 0, 0)
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+
+    const { data } = await admin
+      .from('leads')
+      .select('id, full_name, phone, last_reminder_sent_at, next_action_at')
+      .eq('business_id', businessId)
+      .eq('stage', 'cita')
+      .not('next_action_at', 'is', null)
+      .gte('next_action_at', dayStart.toISOString())
+      .lt('next_action_at', dayEnd.toISOString())
+
+    candidates = (data ?? []).map((l) => ({ ...l, reference: l.next_action_at as string }))
+    message = (nombre) => `Hola ${nombre}, te recordamos tu cita mañana en ${businessName}. ¡Te esperamos!`
+  } else if (typeof inactiveDays === 'number') {
+    const threshold = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000).toISOString()
+
+    const { data } = await admin
+      .from('leads')
+      .select('id, full_name, phone, last_reminder_sent_at, last_contacted_at')
+      .eq('business_id', businessId)
+      .lt('last_contacted_at', threshold)
+
+    candidates = (data ?? []).map((l) => ({ ...l, reference: l.last_contacted_at as string }))
+    message = (nombre) =>
+      `Hola ${nombre}, hace tiempo que no sabemos de ti en ${businessName}. ¿Te interesa alguna novedad?`
+  } else {
+    return 'Este disparador "programado" no trae una condición reconocida (offset_hours / inactive_days)'
+  }
+
+  // No se puede comparar dos columnas de la misma fila en un filtro de
+  // PostgREST — se trae el candidato por la condición principal y se
+  // descarta en JS el que ya se avisó desde la última referencia (la cita o
+  // el último contacto).
+  const due = candidates.filter(
+    (l) =>
+      l.phone?.startsWith('tg:') &&
+      (!l.last_reminder_sent_at || l.last_reminder_sent_at < l.reference),
+  )
+
+  let sent = 0
+  for (const lead of due) {
+    try {
+      await sendTelegramMessage(botToken, lead.phone!.slice('tg:'.length), message(lead.full_name))
+      await admin
+        .from('leads')
+        .update({ last_reminder_sent_at: new Date().toISOString() })
+        .eq('id', lead.id)
+      sent++
+    } catch (error) {
+      console.error(`No se pudo enviar el recordatorio de Telegram a ${lead.id}`, error)
+    }
+  }
+
+  return `${sent} de ${due.length} recordatorio(s) enviados`
+}
+
+async function getTelegramBotToken(
+  admin: SupabaseClient,
+  businessId: string,
+): Promise<string | null> {
+  const { data } = await admin
+    .from('channel_credentials')
+    .select('credential')
+    .eq('business_id', businessId)
+    .eq('provider', 'telegram')
+    .maybeSingle()
+
+  return (data?.credential as { bot_token?: string } | null)?.bot_token ?? null
+}
+
+async function getBusinessName(admin: SupabaseClient, businessId: string): Promise<string> {
+  const { data } = await admin
+    .from('business_profiles')
+    .select('business_name')
+    .eq('business_id', businessId)
+    .maybeSingle()
+
+  return data?.business_name ?? 'nuestro negocio'
 }
 
 function describeAction(actionType: string): string {
