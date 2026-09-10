@@ -210,7 +210,7 @@ export async function respondWithAgent(
     .maybeSingle()
 
   let conversationId = existingConversation?.id as string | undefined
-  let handedOffAlready = existingConversation?.handled_by === 'humano'
+  const handedOffAlready = existingConversation?.handled_by === 'humano'
 
   if (!conversationId) {
     const { data: created, error } = await admin
@@ -310,36 +310,36 @@ export async function respondWithAgent(
 
   // El agente promete en su propio prompt "te escribirán en breve" cuando
   // deriva — pero decirlo no avisa a nadie. Sin esto, la promesa la hace el
-  // texto y el cumplimiento no lo hace nadie.
-  if (!handedOffAlready) {
-    const contactTurns = claudeMessages.filter((m) => m.role === 'user').length
-    const shouldHandOff = detectHandoff(agent.handoff_rules, {
-      incomingText: input.incomingText,
-      reply,
-      contactTurns,
+  // texto y el cumplimiento no lo hace nadie. (handedOffAlready ya cortó la
+  // ejecución más arriba si la conversación era humana de antes, así que
+  // llegar aquí implica que todavía no lo era.)
+  const contactTurns = claudeMessages.filter((m) => m.role === 'user').length
+  const shouldHandOff = detectHandoff(agent.handoff_rules, {
+    incomingText: input.incomingText,
+    reply,
+    contactTurns,
+  })
+
+  if (shouldHandOff) {
+    await admin
+      .from('conversations')
+      .update({ handled_by: 'humano', status: 'pendiente' })
+      .eq('id', conversationId)
+
+    const { data: lead } = await admin
+      .from('leads')
+      .select('full_name')
+      .eq('id', leadId)
+      .maybeSingle()
+
+    await admin.from('notifications').insert({
+      business_id: businessId,
+      level: 'aviso',
+      title: `${lead?.full_name ?? 'Un contacto'} necesita hablar con una persona`,
+      body: shouldHandOff,
+      entity_type: 'conversation',
+      entity_id: conversationId,
     })
-
-    if (shouldHandOff) {
-      await admin
-        .from('conversations')
-        .update({ handled_by: 'humano', status: 'pendiente' })
-        .eq('id', conversationId)
-
-      const { data: lead } = await admin
-        .from('leads')
-        .select('full_name')
-        .eq('id', leadId)
-        .maybeSingle()
-
-      await admin.from('notifications').insert({
-        business_id: businessId,
-        level: 'aviso',
-        title: `${lead?.full_name ?? 'Un contacto'} necesita hablar con una persona`,
-        body: shouldHandOff,
-        entity_type: 'conversation',
-        entity_id: conversationId,
-      })
-    }
   }
 
   return { conversationId, leadId, reply, reason: null }
