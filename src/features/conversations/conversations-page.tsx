@@ -44,7 +44,19 @@ export function ConversationsPage() {
   })
 
   const conversations = query.data ?? []
-  const selected = conversations.find((c) => c.id === conversationId) ?? null
+  const foundInList = conversations.find((c) => c.id === conversationId)
+
+  // Un enlace directo (p. ej. desde la campana de avisos) puede apuntar a una
+  // conversación que no está en la pestaña de filtro activa en este momento
+  // — "Pendientes" no la tendría si la lista se cargó en "Abiertas". Sin este
+  // resguardo, el enlace aterrizaría en "elige una conversación" en silencio.
+  const fallbackQuery = useQuery({
+    queryKey: ['conversation', conversationId],
+    queryFn: () => conversationsRepository.getById(conversationId!),
+    enabled: Boolean(conversationId) && !foundInList && !query.isLoading,
+  })
+
+  const selected = foundInList ?? fallbackQuery.data ?? null
 
   return (
     <div className="space-y-6">
