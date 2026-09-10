@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight, Pause, Play, Zap } from 'lucide-react'
+import { ArrowLeft, ChevronRight, MessageSquare, Pause, Play, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -57,10 +57,15 @@ export function AutomationDetailPage() {
       if (!automation) throw new Error('Automatización no encontrada')
       return automationService.runOnce(automation)
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['automation', automationId] })
-      queryClient.invalidateQueries({ queryKey: ['automation-executions', automationId] })
-      toast.success('Prueba lanzada')
+      // n8n procesa en segundo plano: el registro de la ejecución tarda unos
+      // segundos en aparecer. Un pequeño margen antes de refrescar evita que
+      // "Prueba lanzada" se quede sin nada nuevo que enseñar en el historial.
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['automation-executions', automationId] })
+      }, 4000)
+      toast.success('Prueba lanzada — el historial se actualizará en unos segundos')
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido probarla.'),
@@ -195,32 +200,50 @@ export function AutomationDetailPage() {
             </p>
           ) : (
             <div className="divide-y">
-              {executions.map((execution) => (
-                <div key={execution.id} className="flex items-center justify-between gap-4 py-2.5">
-                  <div className="min-w-0">
-                    <p className="text-sm">{formatDateTime(execution.started_at)}</p>
-                    {execution.error_message && (
-                      <p className="truncate text-xs text-destructive">{execution.error_message}</p>
-                    )}
+              {executions.map((execution) => {
+                const conversationId = extractConversationId(execution.payload)
+
+                return (
+                  <div key={execution.id} className="flex items-center justify-between gap-4 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm">{formatDateTime(execution.started_at)}</p>
+                      {execution.error_message && (
+                        <p className="truncate text-xs text-destructive">{execution.error_message}</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {conversationId && (
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link to={`/app/conversaciones/${conversationId}`}>
+                            <MessageSquare />
+                            Ver conversación
+                          </Link>
+                        </Button>
+                      )}
+                      {execution.duration_ms !== null && (
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {execution.duration_ms} ms
+                        </span>
+                      )}
+                      <Badge variant={execution.status === 'exito' ? 'success' : 'destructive'}>
+                        {execution.status === 'exito' ? 'Correcta' : 'Error'}
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    {execution.duration_ms !== null && (
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {execution.duration_ms} ms
-                      </span>
-                    )}
-                    <Badge variant={execution.status === 'exito' ? 'success' : 'destructive'}>
-                      {execution.status === 'exito' ? 'Correcta' : 'Error'}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
       </Card>
     </div>
   )
+}
+
+/** El payload de una ejecución es jsonb sin tipo: se valida antes de usarlo. */
+function extractConversationId(payload: Record<string, unknown>): string | null {
+  const id = payload.conversationId
+  return typeof id === 'string' ? id : null
 }
 
 function Row({

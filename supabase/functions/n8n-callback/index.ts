@@ -75,8 +75,15 @@ Deno.serve(async (request) => {
   try {
     const detail = await performAction(body, automation.name)
 
-    // Solo se registra una ejecución por disparo, no una por paso.
+    // Solo se registra una ejecución por disparo, no una por paso. La
+    // conversación puede haberla creado un paso anterior (cada paso es una
+    // llamada HTTP separada, sin memoria compartida), así que se localiza de
+    // forma independiente aquí a partir de los mismos datos de contacto —
+    // idéntico a como cualquier paso encontraría al mismo contacto — para
+    // poder enlazarla desde el historial sin tener que ir a buscarla.
     if (body.isLastStep) {
+      const conversationId = await findConversationId(businessId, body.payload)
+
       await admin.from('automation_executions').insert({
         automation_id: automationId,
         business_id: businessId,
@@ -84,7 +91,12 @@ Deno.serve(async (request) => {
         started_at: startedAt,
         finished_at: new Date().toISOString(),
         duration_ms: Date.now() - new Date(startedAt).getTime(),
-        payload: { actionType, detail, source: body.payload?.source ?? 'n8n' },
+        payload: {
+          actionType,
+          detail,
+          source: body.payload?.source ?? 'n8n',
+          ...(conversationId ? { conversationId } : {}),
+        },
       })
     }
 
@@ -201,6 +213,46 @@ function describePayload(payload: Record<string, unknown> | undefined): string {
   const channel = payload.channel ?? payload.canal
   const parts = [name ? `Contacto: ${name}` : null, channel ? `Canal: ${channel}` : null]
   return parts.filter(Boolean).join(' · ') || 'Sin datos adicionales'
+}
+
+/**
+ * Busca (sin crear) la conversación abierta del contacto que trajo esta
+ * ejecución. Es de solo lectura a propósito: si ningún paso llegó a hablar
+ * con nadie, no hay nada que enlazar, y eso está bien.
+ */
+async function findConversationId(
+  businessId: string,
+  payload: Record<string, unknown> | undefined,
+): Promise<string | null> {
+  const email = payload?.email ? String(payload.email) : null
+  const phoneRaw = payload?.phone ?? payload?.telefono
+  const phone = phoneRaw ? String(phoneRaw) : null
+  const channel = String(payload?.channel ?? payload?.canal ?? 'web')
+
+  if (!email && !phone) return null
+
+  const { data: lead } = await admin
+    .from('leads')
+    .select('id')
+    .eq('business_id', businessId)
+    .or([email ? `email.eq.${email}` : '', phone ? `phone.eq.${phone}` : '']
+      .filter(Boolean)
+      .join(','))
+    .maybeSingle()
+
+  if (!lead) return null
+
+  const { data: conversation } = await admin
+    .from('conversations')
+    .select('id')
+    .eq('business_id', businessId)
+    .eq('lead_id', lead.id)
+    .eq('channel', channel)
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  return conversation?.id ?? null
 }
 
 /* ------------------------------------------------------------------ */
