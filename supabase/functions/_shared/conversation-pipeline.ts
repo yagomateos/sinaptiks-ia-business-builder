@@ -203,7 +203,7 @@ export async function respondWithAgent(
 
   const { data: existingConversation } = await admin
     .from('conversations')
-    .select('id, handled_by')
+    .select('id, handled_by, handled_by_since')
     .eq('business_id', businessId)
     .eq('lead_id', leadId)
     .eq('channel', input.channel)
@@ -212,6 +212,7 @@ export async function respondWithAgent(
 
   let conversationId = existingConversation?.id as string | undefined
   const handedOffAlready = existingConversation?.handled_by === 'humano'
+  const handledSince = existingConversation?.handled_by_since ?? null
 
   if (!conversationId) {
     const { data: created, error } = await admin
@@ -343,7 +344,14 @@ export async function respondWithAgent(
   // texto y el cumplimiento no lo hace nadie. (handedOffAlready ya cortó la
   // ejecución más arriba si la conversación era humana de antes, así que
   // llegar aquí implica que todavía no lo era.)
-  const contactTurns = claudeMessages.filter((m) => m.role === 'user').length
+  // Contar desde el historial completo de la conversación haría que una que
+  // superó el umbral una vez no pudiera bajar nunca de él: reasignarla a IA
+  // (`handled_by_since` se actualiza al hacerlo) debe darle turnos frescos,
+  // no heredar los que ya se contaron la vez anterior.
+  const contactTurns = (history ?? []).filter(
+    (m: { role: string; created_at: string }) =>
+      m.role === 'contacto' && (!handledSince || m.created_at >= handledSince),
+  ).length
   const shouldHandOff = detectHandoff(agent.handoff_rules, {
     incomingText: input.incomingText,
     reply,

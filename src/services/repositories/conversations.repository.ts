@@ -97,7 +97,15 @@ export const conversationsRepository = {
   },
 
   async reassignToAgent(conversationId: UUID): Promise<Conversation> {
-    return this.update(conversationId, { handled_by: 'agente_ia', status: 'abierta' })
+    // handled_by_since se usa para contar los turnos de cara a volver a
+    // escalar — sin resetearlo aquí, una conversación que ya superó el
+    // umbral una vez se derivaría de nuevo al primer mensaje, sin importar
+    // cuántas veces se reasigne.
+    return this.update(conversationId, {
+      handled_by: 'agente_ia',
+      status: 'abierta',
+      handled_by_since: new Date().toISOString(),
+    })
   },
 
   async markRead(conversationId: UUID): Promise<void> {

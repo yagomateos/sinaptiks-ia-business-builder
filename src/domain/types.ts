@@ -231,6 +231,7 @@ export interface Conversation {
   subject: string | null
   status: ConversationStatus
   handled_by: ConversationHandler
+  handled_by_since: ISODate
   assigned_agent_id: UUID | null
   last_message_at: ISODate | null
   unread_count: number
