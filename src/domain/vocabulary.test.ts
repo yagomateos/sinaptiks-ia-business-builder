@@ -68,8 +68,24 @@ describe('isAutomationTriggerConnected', () => {
     ).toBe(false)
   })
 
-  it('is not connected for programado or inactividad — no cron yet', () => {
-    expect(isAutomationTriggerConnected({ type: 'programado', config: {} }, [])).toBe(false)
-    expect(isAutomationTriggerConnected({ type: 'inactividad', config: {} }, [])).toBe(false)
+  it('is connected for programado — n8n fires its own native schedule node', () => {
+    expect(isAutomationTriggerConnected({ type: 'programado', config: {} }, [])).toBe(true)
+  })
+
+  it('is connected for inactividad — the automation-inactivity-scan cron fires it', () => {
+    expect(isAutomationTriggerConnected({ type: 'inactividad', config: { hours: 24 } }, [])).toBe(
+      true,
+    )
+  })
+
+  it('is not connected for programado or inactividad with a responder_ia step', () => {
+    expect(
+      isAutomationTriggerConnected({ type: 'programado', config: {} }, [action('responder_ia')]),
+    ).toBe(false)
+    expect(
+      isAutomationTriggerConnected({ type: 'inactividad', config: { hours: 24 } }, [
+        action('responder_ia'),
+      ]),
+    ).toBe(false)
   })
 })

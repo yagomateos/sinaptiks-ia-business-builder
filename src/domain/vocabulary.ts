@@ -145,16 +145,20 @@ export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>(
  * salvo que tenga `delay_hours` — el disparo ahí es inmediato, no hay
  * infraestructura todavía para esperar antes de lanzarlo.
  *
- * `programado` e `inactividad` no tienen ningún camino conectado todavía
- * (necesitan un cron).
+ * `programado` no necesita nada nuestro: n8n usa su propio nodo de horario
+ * (`n8n-nodes-base.scheduleTrigger`, ver `buildTriggerNode` en
+ * `workflow-builder.ts`) y lo dispara solo en cuanto el workflow está
+ * activo — comprobado contra producción, ya se ha ejecutado por su cuenta.
  *
- * Un paso `responder_ia` tampoco dispara en ninguno de los dos casos
- * conectados: `mensaje_entrante` duplicaría la respuesta que este mismo
- * pipeline ya genera para cada mensaje, y `cambio_estado` no trae ningún
- * mensaje real al que responder — respondWithAgent caería a su "Hola" de
- * respaldo y generaría una respuesta inventada. Debe coincidir con las
- * exclusiones reales en `conversation-pipeline.ts` y en la migración
- * `automation_stage_dispatch`.
+ * `inactividad` dispara desde el cron `automation-inactivity-scan`
+ * (migración `automation_inactivity_dispatch`), cada 30 minutos.
+ *
+ * Un paso `responder_ia` no dispara en ninguno de los casos: el pipeline ya
+ * responde directamente a cada mensaje real (mensaje_entrante), y en el
+ * resto no hay ningún mensaje real al que responder — respondWithAgent
+ * caería a su "Hola" de respaldo e inventaría una respuesta. Debe coincidir
+ * con las exclusiones reales en `conversation-pipeline.ts` y en las
+ * migraciones `automation_stage_dispatch` / `automation_inactivity_dispatch`.
  */
 export function isAutomationTriggerConnected(
   trigger: { type: string; config: Record<string, unknown> },
@@ -169,6 +173,10 @@ export function isAutomationTriggerConnected(
 
   if (trigger.type === 'cambio_estado') {
     return !trigger.config.delay_hours
+  }
+
+  if (trigger.type === 'programado' || trigger.type === 'inactividad') {
+    return true
   }
 
   return false
