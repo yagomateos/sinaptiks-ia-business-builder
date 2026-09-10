@@ -129,10 +129,9 @@ function AutomationCard({ automation }: { automation: Automation }) {
         <Badge variant="secondary">{AUTOMATION_CATEGORY_LABELS[automation.category]}</Badge>
         <div className="flex items-center gap-1.5">
           {hasUnconnectedActions && (
-            <AlertTriangle
-              className="h-3.5 w-3.5 text-warning"
-              title="Algún paso todavía no sale de verdad: falta conectar su canal."
-            />
+            <span title="Algún paso todavía no sale de verdad: falta conectar su canal.">
+              <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+            </span>
           )}
           <AutomationStatusBadge status={automation.status} />
         </div>
