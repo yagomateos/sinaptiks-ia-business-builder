@@ -28,9 +28,17 @@ import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/shared/st
 import { knowledgeRepository } from '@/services/repositories/knowledge.repository'
 import { urlFetchService } from '@/services/knowledge/url-fetch.service'
 import { chunkText, vectorStore } from '@/services/vector'
+import { extractDocxText, extractPdfText } from '@/lib/document-text'
 import type { KnowledgeDocument, KnowledgeSourceType, KnowledgeStatus } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
 import { formatRelative } from '@/lib/utils'
+
+const FILE_SOURCE_TYPES: KnowledgeSourceType[] = ['txt', 'pdf', 'docx']
+const FILE_ACCEPT: Partial<Record<KnowledgeSourceType, string>> = {
+  txt: '.txt,text/plain',
+  pdf: '.pdf,application/pdf',
+  docx: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+}
 
 const SOURCE_LABELS: Partial<Record<KnowledgeSourceType, string>> = {
   texto: 'Texto',
@@ -321,6 +329,7 @@ function AddKnowledgeDialog({
   const [content, setContent] = useState('')
   const [url, setUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState(false)
 
   const create = useMutation({
     mutationFn: () =>
@@ -356,11 +365,11 @@ function AddKnowledgeDialog({
       setError('Escribe la dirección de la página.')
       return
     }
-    if (sourceType === 'txt' && content.trim().length < 10) {
-      setError('Sube un archivo .txt con algo de texto dentro.')
+    if (FILE_SOURCE_TYPES.includes(sourceType) && content.trim().length < 10) {
+      setError('Sube un archivo con algo de texto dentro.')
       return
     }
-    if (sourceType !== 'url' && sourceType !== 'txt' && content.trim().length < 10) {
+    if (sourceType !== 'url' && !FILE_SOURCE_TYPES.includes(sourceType) && content.trim().length < 10) {
       setError('Escribe algo de contenido.')
       return
     }
@@ -405,6 +414,8 @@ function AddKnowledgeDialog({
                 <SelectItem value="faq">Preguntas frecuentes</SelectItem>
                 <SelectItem value="url">Página web</SelectItem>
                 <SelectItem value="txt">Archivo de texto (.txt)</SelectItem>
+                <SelectItem value="pdf">Archivo PDF</SelectItem>
+                <SelectItem value="docx">Documento Word (.docx)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -423,22 +434,42 @@ function AddKnowledgeDialog({
                 Leeremos el texto de esta página en cuanto pulses "Procesar".
               </p>
             </div>
-          ) : sourceType === 'txt' ? (
+          ) : FILE_SOURCE_TYPES.includes(sourceType) ? (
             <div className="space-y-1.5">
               <Label htmlFor="docFile">Archivo</Label>
               <Input
                 id="docFile"
                 type="file"
-                accept=".txt,text/plain"
+                accept={FILE_ACCEPT[sourceType]}
+                disabled={extracting}
                 onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  const text = await file.text()
-                  setContent(text)
-                  if (!title.trim()) setTitle(file.name.replace(/\.txt$/i, ''))
+
+                  setContent('')
+                  setError(null)
+                  setExtracting(true)
+                  try {
+                    const text =
+                      sourceType === 'pdf'
+                        ? await extractPdfText(file)
+                        : sourceType === 'docx'
+                          ? await extractDocxText(file)
+                          : await file.text()
+
+                    setContent(text)
+                    if (!title.trim()) {
+                      setTitle(file.name.replace(/\.(txt|pdf|docx)$/i, ''))
+                    }
+                  } catch {
+                    setError('No hemos podido leer ese archivo. ¿Está dañado o protegido?')
+                  } finally {
+                    setExtracting(false)
+                  }
                 }}
               />
-              {content && (
+              {extracting && <p className="text-xs text-muted-foreground">Leyendo archivo…</p>}
+              {!extracting && content && (
                 <p className="text-xs text-muted-foreground">
                   {content.length.toLocaleString('es-ES')} caracteres leídos.
                 </p>
@@ -467,7 +498,7 @@ function AddKnowledgeDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" loading={create.isPending}>
+            <Button type="submit" loading={create.isPending} disabled={extracting}>
               Añadir
             </Button>
           </DialogFooter>
