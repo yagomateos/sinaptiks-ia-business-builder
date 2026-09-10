@@ -63,7 +63,7 @@ export function generateRuleBasedReply(input: {
   )
   if (matchedFaq) return matchedFaq.answer
 
-  const matchedService = activeServices.find((s) => normalized.includes(s.name.toLowerCase()))
+  const matchedService = activeServices.find((s) => matchesServiceName(normalized, s.name))
   if (matchedService) return describeService(matchedService)
 
   // Sin un servicio concreto mencionado, "cuánto cuesta" solo se puede
@@ -102,6 +102,19 @@ export function generateRuleBasedReply(input: {
   }
 
   return `Gracias por escribir a ${input.businessName}. Cuéntame un poco más sobre lo que necesitas y te ayudo enseguida.`
+}
+
+/**
+ * "Implante dental" solo coincidía si el mensaje decía las dos palabras
+ * seguidas — nadie escribe así. Basta con que aparezca una palabra propia
+ * del nombre del servicio (no un relleno tipo "de"/"para").
+ */
+function matchesServiceName(normalizedText: string, serviceName: string): boolean {
+  const name = serviceName.toLowerCase()
+  if (normalizedText.includes(name)) return true
+
+  const words = name.split(/\s+/).filter((w) => w.length > 3)
+  return words.some((w) => normalizedText.includes(w))
 }
 
 function describeService(service: RulesReplyService): string {
