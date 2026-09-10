@@ -7,7 +7,12 @@
  * que inevitablemente divergirían.
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
-import { complete, isAnthropicConfigured } from './anthropic-client.ts'
+import {
+  completeWithTools,
+  isAnthropicConfigured,
+  type ClaudeMessage,
+  type ClaudeToolUseBlock,
+} from './anthropic-client.ts'
 import { scoreLead, type ScoredMessage } from './lead-scoring.ts'
 import { generateRuleBasedReply, type RulesReplyFaq } from './rules-reply.ts'
 import { isConfigured as isN8nConfigured, n8n } from './n8n-client.ts'
@@ -261,6 +266,84 @@ async function fireImmediateIncomingMessageAutomations(
   )
 }
 
+/**
+ * Antes de esto, el prompt le decía al agente "avisa al equipo" pero nada
+ * conectaba esa frase con un aviso real — el cliente se iba creyendo que
+ * alguien se iba a enterar, y nadie lo hacía. Con esta herramienta, cuando
+ * Claude reúne servicio + fecha/hora + contacto, dispara una notificación de
+ * verdad en el panel en vez de solo prometerlo en el texto.
+ */
+const REGISTER_APPOINTMENT_TOOL = {
+  name: 'registrar_solicitud_cita',
+  description:
+    'Registra una solicitud de cita para que el equipo del negocio la vea y la confirme. ' +
+    'Llama a esto UNA SOLA VEZ, justo cuando ya tengas el servicio que quiere el cliente, ' +
+    'cuándo le viene bien, y una forma de contacto (teléfono o email). No la llames si todavía ' +
+    'falta alguno de esos tres datos — sigue preguntando hasta tenerlos.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      nombre: { type: 'string', description: 'Nombre del cliente, si lo dio' },
+      servicio: { type: 'string', description: 'Servicio o tratamiento que pide' },
+      fecha_hora_preferida: { type: 'string', description: 'Cuándo le viene bien, tal cual lo dijo' },
+      telefono: { type: 'string' },
+      email: { type: 'string' },
+    },
+    required: ['servicio', 'fecha_hora_preferida'],
+  },
+} as const
+
+async function registerAppointmentRequest(
+  admin: SupabaseClient,
+  businessId: string,
+  leadId: string,
+  conversationId: string,
+  args: Record<string, unknown>,
+  payload: ContactFields,
+): Promise<string> {
+  const servicio = String(args.servicio ?? 'un servicio sin especificar')
+  const fechaHora = String(args.fecha_hora_preferida ?? 'sin fecha concretada')
+  const nombre = String(args.nombre ?? payload.name ?? payload.nombre ?? 'Un contacto')
+  const telefono = args.telefono ? String(args.telefono) : null
+  const email = args.email ? String(args.email) : null
+  const contacto = [telefono, email].filter(Boolean).join(' · ') || 'sin contacto adicional'
+
+  await admin.from('notifications').insert({
+    business_id: businessId,
+    level: 'aviso',
+    title: `${nombre} quiere una cita`,
+    body: `${servicio} — ${fechaHora}. Contacto: ${contacto}`,
+    entity_type: 'conversation',
+    entity_id: conversationId,
+  })
+
+  // El teléfono real del cliente NO va al campo `phone` del lead: para un
+  // contacto de Telegram ese campo guarda `tg:<chat_id>` y es la clave con la
+  // que se le reconoce en el siguiente mensaje — sobrescribirlo rompería esa
+  // deduplicación. Se guarda en `notes` en su lugar.
+  const { data: currentLead } = await admin
+    .from('leads')
+    .select('notes')
+    .eq('id', leadId)
+    .maybeSingle()
+
+  const noteLine = `Pidió cita: ${servicio} — ${fechaHora}${telefono ? ` (tel: ${telefono})` : ''}`
+  const notes = [currentLead?.notes, noteLine].filter(Boolean).join('\n')
+
+  await admin
+    .from('leads')
+    .update({
+      ...(email ? { email } : {}),
+      notes,
+      next_action: `Confirmar cita: ${servicio} — ${fechaHora}`,
+      stage: 'cita',
+      temperature: 'caliente',
+    })
+    .eq('id', leadId)
+
+  return 'Solicitud registrada, el equipo ya lo tiene.'
+}
+
 export interface AgentReplyResult {
   conversationId: string
   leadId: string
@@ -418,7 +501,63 @@ export async function respondWithAgent(
         ? `${agent.system_prompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
         : agent.system_prompt
 
-      reply = await complete({ system, messages: claudeMessages, effort: 'low', maxTokens: 700 })
+      const tools = [REGISTER_APPOINTMENT_TOOL]
+      const first = await completeWithTools({
+        system,
+        messages: claudeMessages,
+        effort: 'low',
+        maxTokens: 700,
+        tools,
+      })
+
+      const toolUse = first.content.find(
+        (b): b is ClaudeToolUseBlock => b.type === 'tool_use',
+      )
+
+      if (toolUse && first.stop_reason === 'tool_use') {
+        const toolResultText = await registerAppointmentRequest(
+          admin,
+          businessId,
+          leadId,
+          conversationId,
+          toolUse.input,
+          input.payload,
+        )
+
+        // Segundo turno solo para que Claude cierre la frase al cliente
+        // sabiendo que el registro salió bien — el propio tool_result se lo
+        // dice, no hace falta que vuelva a decidir si llamar a la
+        // herramienta otra vez.
+        const followUp: ClaudeMessage[] = [
+          ...claudeMessages,
+          { role: 'assistant', content: first.content },
+          {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: toolResultText }],
+          },
+        ]
+
+        const second = await completeWithTools({
+          system,
+          messages: followUp,
+          effort: 'low',
+          maxTokens: 300,
+          tools,
+        })
+
+        const textBlock = second.content.find(
+          (b): b is { type: 'text'; text: string } => b.type === 'text',
+        )
+        reply = textBlock?.text?.trim() || 'Perfecto, queda registrado — el equipo te confirma en breve.'
+      } else {
+        const textBlock = first.content.find(
+          (b): b is { type: 'text'; text: string } => b.type === 'text',
+        )
+        const text = textBlock?.text?.trim()
+        if (!text) throw new Error('El modelo de IA ha devuelto una respuesta vacía')
+        reply = text
+      }
+
       repliedWithAi = true
     } catch (error) {
       console.error('Claude falló, se cae al motor de reglas', error)

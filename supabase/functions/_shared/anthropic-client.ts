@@ -17,8 +17,23 @@ export const isAnthropicConfigured = Boolean(apiKey)
 
 export interface ClaudeMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: unknown
 }
+
+export interface ClaudeTool {
+  name: string
+  description: string
+  input_schema: Record<string, unknown>
+}
+
+export interface ClaudeToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export type ClaudeContentBlock = { type: 'text'; text: string } | ClaudeToolUseBlock
 
 interface CompleteInput {
   system: string
@@ -26,9 +41,15 @@ interface CompleteInput {
   maxTokens?: number
   /** Tareas cortas y de chat rinden bien en 'low'; escribir análisis, en 'medium'. */
   effort?: 'low' | 'medium' | 'high'
+  tools?: ClaudeTool[]
 }
 
-export async function complete(input: CompleteInput): Promise<string> {
+interface ClaudeRawResponse {
+  content: ClaudeContentBlock[]
+  stop_reason: string
+}
+
+async function sendRaw(input: CompleteInput): Promise<ClaudeRawResponse> {
   if (!apiKey) throw new HttpError(503, 'La IA todavía no está configurada')
   if (input.messages.length === 0) throw new HttpError(400, 'Nada que responder')
 
@@ -45,6 +66,7 @@ export async function complete(input: CompleteInput): Promise<string> {
       system: input.system,
       messages: input.messages,
       output_config: { effort: input.effort ?? 'medium' },
+      ...(input.tools ? { tools: input.tools } : {}),
     }),
   })
 
@@ -54,12 +76,28 @@ export async function complete(input: CompleteInput): Promise<string> {
     throw new HttpError(502, 'El modelo de IA no ha podido responder')
   }
 
-  const data = await response.json()
-  const block = (data.content ?? []).find((b: { type: string }) => b.type === 'text')
+  return await response.json()
+}
+
+export async function complete(input: CompleteInput): Promise<string> {
+  const data = await sendRaw(input)
+  const block = data.content.find((b): b is { type: 'text'; text: string } => b.type === 'text')
   const text = block?.text?.trim()
 
   if (!text) throw new HttpError(502, 'El modelo de IA ha devuelto una respuesta vacía')
   return text
+}
+
+/**
+ * Variante con herramientas — para cuando el texto no basta y hace falta que
+ * el modelo dispare una acción real (p. ej. avisar al equipo de una
+ * solicitud de cita) además de contestar. Se expone aparte de `complete()`
+ * para no cambiarle el tipo de retorno a quien ya lo usa esperando un string.
+ */
+export async function completeWithTools(
+  input: CompleteInput & { tools: ClaudeTool[] },
+): Promise<ClaudeRawResponse> {
+  return sendRaw(input)
 }
 
 export function userPrompt(system: string, prompt: string, opts?: Omit<CompleteInput, 'system' | 'messages'>) {
