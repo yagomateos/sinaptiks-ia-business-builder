@@ -96,6 +96,10 @@ export const conversationsRepository = {
     return this.update(conversationId, { handled_by: 'humano', status: 'pendiente' })
   },
 
+  async reassignToAgent(conversationId: UUID): Promise<Conversation> {
+    return this.update(conversationId, { handled_by: 'agente_ia', status: 'abierta' })
+  },
+
   async markRead(conversationId: UUID): Promise<void> {
     const { error } = await supabase
       .from('conversations')

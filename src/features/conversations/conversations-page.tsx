@@ -223,6 +223,16 @@ function ConversationView({
       toast.error(error instanceof Error ? error.message : 'No hemos podido cambiarla.'),
   })
 
+  const reassign = useMutation({
+    mutationFn: () => conversationsRepository.reassignToAgent(conversation.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations', businessId] })
+      toast.success('El agente vuelve a responder en esta conversación.')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido cambiarla.'),
+  })
+
   const lead = conversation.lead
   const name = lead?.full_name ?? 'Contacto sin nombre'
 
@@ -242,7 +252,7 @@ function ConversationView({
             </div>
           </div>
 
-          {conversation.handled_by === 'agente_ia' && (
+          {conversation.handled_by === 'agente_ia' ? (
             <Button
               size="sm"
               variant="outline"
@@ -251,6 +261,16 @@ function ConversationView({
             >
               <UserCheck />
               Pasar a humano
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={reassign.isPending}
+              onClick={() => reassign.mutate()}
+            >
+              <Bot />
+              Reasignar a IA
             </Button>
           )}
         </div>
