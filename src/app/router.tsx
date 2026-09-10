@@ -1,4 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
+import { lazyRetry } from '@/lib/lazy-retry'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AppShell } from '@/components/layout/app-shell'
@@ -15,65 +16,101 @@ import { SignUpPage } from '@/features/auth/signup-page'
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page'
 
 /* Everything behind the login is split out of the initial bundle. */
-const CreateBusinessPage = lazy(() =>
+const CreateBusinessPage = lazy(
+  lazyRetry(() =>
   import('@/features/businesses/create-business-page').then((m) => ({ default: m.CreateBusinessPage })),
+  ),
 )
-const OnboardingPage = lazy(() =>
+const OnboardingPage = lazy(
+  lazyRetry(() =>
   import('@/features/onboarding/onboarding-page').then((m) => ({ default: m.OnboardingPage })),
+  ),
 )
-const SystemGenerationPage = lazy(() =>
+const SystemGenerationPage = lazy(
+  lazyRetry(() =>
   import('@/features/system/system-generation-page').then((m) => ({ default: m.SystemGenerationPage })),
+  ),
 )
-const DashboardPage = lazy(() =>
+const DashboardPage = lazy(
+  lazyRetry(() =>
   import('@/features/dashboard/dashboard-page').then((m) => ({ default: m.DashboardPage })),
+  ),
 )
-const AutomationsPage = lazy(() =>
+const AutomationsPage = lazy(
+  lazyRetry(() =>
   import('@/features/automations/automations-page').then((m) => ({ default: m.AutomationsPage })),
+  ),
 )
-const AutomationDetailPage = lazy(() =>
+const AutomationDetailPage = lazy(
+  lazyRetry(() =>
   import('@/features/automations/automation-detail-page').then((m) => ({
     default: m.AutomationDetailPage,
   })),
+  ),
 )
-const AgentsPage = lazy(() =>
+const AgentsPage = lazy(
+  lazyRetry(() =>
   import('@/features/agents/agents-page').then((m) => ({ default: m.AgentsPage })),
+  ),
 )
-const AgentDetailPage = lazy(() =>
+const AgentDetailPage = lazy(
+  lazyRetry(() =>
   import('@/features/agents/agent-detail-page').then((m) => ({ default: m.AgentDetailPage })),
+  ),
 )
-const KnowledgePage = lazy(() =>
+const KnowledgePage = lazy(
+  lazyRetry(() =>
   import('@/features/knowledge/knowledge-page').then((m) => ({ default: m.KnowledgePage })),
+  ),
 )
-const LeadsPage = lazy(() =>
+const LeadsPage = lazy(
+  lazyRetry(() =>
   import('@/features/crm/leads-page').then((m) => ({ default: m.LeadsPage })),
+  ),
 )
-const LeadDetailPage = lazy(() =>
+const LeadDetailPage = lazy(
+  lazyRetry(() =>
   import('@/features/crm/lead-detail-page').then((m) => ({ default: m.LeadDetailPage })),
+  ),
 )
-const ConversationSimulatorPage = lazy(() =>
+const ConversationSimulatorPage = lazy(
+  lazyRetry(() =>
   import('@/features/crm/conversation-simulator-page').then((m) => ({
     default: m.ConversationSimulatorPage,
   })),
+  ),
 )
-const ConversationsPage = lazy(() =>
+const ConversationsPage = lazy(
+  lazyRetry(() =>
   import('@/features/conversations/conversations-page').then((m) => ({
     default: m.ConversationsPage,
   })),
+  ),
 )
-const AnalyticsPage = lazy(() =>
+const AnalyticsPage = lazy(
+  lazyRetry(() =>
   import('@/features/analytics/analytics-page').then((m) => ({ default: m.AnalyticsPage })),
+  ),
 )
-const IntegrationsPage = lazy(() =>
+const IntegrationsPage = lazy(
+  lazyRetry(() =>
   import('@/features/integrations/integrations-page').then((m) => ({ default: m.IntegrationsPage })),
+  ),
 )
-const SettingsPage = lazy(() =>
+const SettingsPage = lazy(
+  lazyRetry(() =>
   import('@/features/settings/settings-page').then((m) => ({ default: m.SettingsPage })),
+  ),
 )
-const AdminPage = lazy(() =>
+const AdminPage = lazy(
+  lazyRetry(() =>
   import('@/features/admin/admin-page').then((m) => ({ default: m.AdminPage })),
+  ),
 )
-const NotFoundPage = lazy(() =>
+const NotFoundPage = lazy(
+  lazyRetry(() =>
   import('@/features/misc/not-found-page').then((m) => ({ default: m.NotFoundPage })),
+  ),
 )
 
 function Lazy({ children }: { children: ReactNode }) {

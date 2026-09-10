@@ -428,3 +428,7 @@ verify_jwt = true
 # compartido que comprueba la propia función (x-sinaptkis-secret).
 [functions.n8n-callback]
 verify_jwt = false
+
+# Puente hacia Claude. La llama siempre una persona con sesión iniciada.
+[functions.ai]
+verify_jwt = true

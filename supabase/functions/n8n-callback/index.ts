@@ -12,6 +12,7 @@
  * registran pasarán a enviar de verdad: el contrato con n8n no cambia.
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { complete, isAnthropicConfigured } from '../_shared/anthropic-client.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -111,55 +112,33 @@ Deno.serve(async (request) => {
 /**
  * Ejecuta el efecto de una acción.
  *
- * Las que dependen de un canal externo (WhatsApp, email, calendario) todavía
- * no envían nada: dejan constancia en la actividad del negocio para que el
- * usuario vea que el flujo llegó hasta ahí. Es deliberado — es preferible que
- * no pase nada a fingir que se envió un mensaje que nadie recibió.
+ * Las que todavía dependen de un canal externo sin conectar (WhatsApp, email,
+ * calendario) no envían nada: dejan constancia en la actividad del negocio
+ * para que el usuario vea que el flujo llegó hasta ahí. Es preferible que no
+ * pase nada a fingir que se envió un mensaje que nadie recibió — el mismo
+ * principio que sigue `responder_ia` cuando no hay un modelo configurado.
  */
 async function performAction(body: CallbackBody, automationName: string): Promise<string> {
   const { businessId, actionType, actionConfig, payload } = body
 
   switch (actionType) {
     case 'crear_lead': {
-      const name = String(payload?.name ?? payload?.nombre ?? 'Contacto sin nombre')
-      const email = payload?.email ? String(payload.email) : null
-      const phone = payload?.phone ?? payload?.telefono
-      const channel = String(payload?.channel ?? payload?.canal ?? 'web')
-
-      // Si ya existe por email o teléfono, no se duplica.
-      if (email || phone) {
-        const { data: existing } = await admin
-          .from('leads')
-          .select('id')
-          .eq('business_id', businessId)
-          .or([email ? `email.eq.${email}` : '', phone ? `phone.eq.${phone}` : '']
-            .filter(Boolean)
-            .join(','))
-          .maybeSingle()
-
-        if (existing) return `El contacto ya existía (${existing.id})`
-      }
-
-      const { data, error } = await admin
-        .from('leads')
-        .insert({
-          business_id: businessId,
-          full_name: name,
-          email,
-          phone: phone ? String(phone) : null,
-          source: channel,
-          stage: String(actionConfig.stage ?? 'nuevo'),
-          temperature: 'templado',
-        })
-        .select('id')
-        .single()
-
-      if (error) throw new Error(`No se pudo crear el contacto: ${error.message}`)
-      return `Contacto creado (${data.id})`
+      const { id, created } = await findOrCreateLead(businessId, payload, actionConfig)
+      return created ? `Contacto creado (${id})` : `El contacto ya existía (${id})`
     }
 
+    case 'responder_ia':
+      return await respondWithAgent(businessId, actionConfig, payload)
+
     case 'actualizar_lead': {
-      const leadId = payload?.leadId ?? payload?.lead_id
+      // Si el paso trae un id explícito se usa tal cual; si no, se localiza
+      // por email o teléfono — el mismo contacto que un paso anterior de la
+      // misma automatización puede haber creado.
+      const explicitId = payload?.leadId ?? payload?.lead_id
+      const leadId = explicitId
+        ? String(explicitId)
+        : (await findOrCreateLead(businessId, payload, actionConfig)).id
+
       if (!leadId) return 'Sin contacto que actualizar'
 
       const patch: Record<string, unknown> = { last_contacted_at: new Date().toISOString() }
@@ -169,7 +148,7 @@ async function performAction(body: CallbackBody, automationName: string): Promis
       const { error } = await admin
         .from('leads')
         .update(patch)
-        .eq('id', String(leadId))
+        .eq('id', leadId)
         .eq('business_id', businessId)
 
       if (error) throw new Error(`No se pudo actualizar el contacto: ${error.message}`)
@@ -189,8 +168,8 @@ async function performAction(body: CallbackBody, automationName: string): Promis
     }
 
     default: {
-      // enviar_whatsapp, enviar_email, agendar_cita, responder_ia,
-      // solicitar_resena: pendientes de conectar su canal.
+      // enviar_whatsapp, enviar_email, agendar_cita, solicitar_resena:
+      // pendientes de conectar su canal.
       await admin.from('activity_logs').insert({
         business_id: businessId,
         actor_label: 'Automatización',
@@ -209,7 +188,6 @@ const ACTION_DESCRIPTIONS: Record<string, string> = {
   enviar_whatsapp: 'mensaje de WhatsApp pendiente de enviar',
   enviar_email: 'email pendiente de enviar',
   agendar_cita: 'cita pendiente de agendar',
-  responder_ia: 'respuesta del agente pendiente',
   solicitar_resena: 'solicitud de reseña pendiente',
 }
 
@@ -223,4 +201,172 @@ function describePayload(payload: Record<string, unknown> | undefined): string {
   const channel = payload.channel ?? payload.canal
   const parts = [name ? `Contacto: ${name}` : null, channel ? `Canal: ${channel}` : null]
   return parts.filter(Boolean).join(' · ') || 'Sin datos adicionales'
+}
+
+/* ------------------------------------------------------------------ */
+/* Contactos                                                           */
+/* ------------------------------------------------------------------ */
+
+interface LeadResult {
+  id: string
+  created: boolean
+}
+
+/**
+ * Busca un contacto por email o teléfono antes de crearlo. La usan tanto
+ * `crear_lead` como `responder_ia`: una persona que escribe por WhatsApp no
+ * debería generar una ficha distinta cada vez que vuelve a escribir.
+ */
+async function findOrCreateLead(
+  businessId: string,
+  payload: Record<string, unknown> | undefined,
+  actionConfig: Record<string, unknown>,
+): Promise<LeadResult> {
+  const name = String(payload?.name ?? payload?.nombre ?? 'Contacto sin nombre')
+  const email = payload?.email ? String(payload.email) : null
+  const phoneRaw = payload?.phone ?? payload?.telefono
+  const phone = phoneRaw ? String(phoneRaw) : null
+  const channel = String(payload?.channel ?? payload?.canal ?? 'web')
+
+  if (email || phone) {
+    const { data: existing } = await admin
+      .from('leads')
+      .select('id')
+      .eq('business_id', businessId)
+      .or([email ? `email.eq.${email}` : '', phone ? `phone.eq.${phone}` : '']
+        .filter(Boolean)
+        .join(','))
+      .maybeSingle()
+
+    if (existing) return { id: existing.id, created: false }
+  }
+
+  const { data, error } = await admin
+    .from('leads')
+    .insert({
+      business_id: businessId,
+      full_name: name,
+      email,
+      phone,
+      source: channel,
+      stage: String(actionConfig.stage ?? 'nuevo'),
+      temperature: 'templado',
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(`No se pudo crear el contacto: ${error.message}`)
+  return { id: data.id, created: true }
+}
+
+/* ------------------------------------------------------------------ */
+/* Respuesta de un agente                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Registra la conversación real y, si hay un modelo configurado, genera la
+ * respuesta del agente. Sin clave de Anthropic, la conversación se crea igual
+ * — para que el negocio vea que alguien escribió — pero sin fingir una
+ * respuesta automática que nadie generó.
+ */
+async function respondWithAgent(
+  businessId: string,
+  actionConfig: Record<string, unknown>,
+  payload: Record<string, unknown> | undefined,
+): Promise<string> {
+  const incomingText = String(payload?.message ?? payload?.text ?? payload?.mensaje ?? '').trim()
+  const channel = String(payload?.channel ?? payload?.canal ?? 'web')
+
+  const { id: leadId } = await findOrCreateLead(businessId, payload, {})
+
+  // Una conversación abierta por canal y contacto; si ya hay una, se reutiliza
+  // en vez de abrir un hilo nuevo por cada mensaje.
+  const { data: existingConversation } = await admin
+    .from('conversations')
+    .select('id')
+    .eq('business_id', businessId)
+    .eq('lead_id', leadId)
+    .eq('channel', channel)
+    .neq('status', 'cerrada')
+    .maybeSingle()
+
+  let conversationId = existingConversation?.id as string | undefined
+
+  if (!conversationId) {
+    const { data: created, error } = await admin
+      .from('conversations')
+      .insert({ business_id: businessId, lead_id: leadId, channel, handled_by: 'agente_ia' })
+      .select('id')
+      .single()
+
+    if (error) throw new Error(`No se pudo crear la conversación: ${error.message}`)
+    conversationId = created.id
+  }
+
+  if (incomingText) {
+    await admin.from('messages').insert({
+      conversation_id: conversationId,
+      business_id: businessId,
+      role: 'contacto',
+      content: incomingText,
+    })
+  }
+
+  // Qué agente responde: el que pida la automatización, o el primero activo.
+  const agentType = actionConfig.agent ? String(actionConfig.agent) : null
+  let agentQuery = admin
+    .from('ai_agents')
+    .select('id, system_prompt, status')
+    .eq('business_id', businessId)
+
+  agentQuery = agentType ? agentQuery.eq('type', agentType) : agentQuery.eq('status', 'activo')
+  const { data: agent } = await agentQuery.limit(1).maybeSingle()
+
+  if (!isAnthropicConfigured) {
+    await admin.from('messages').insert({
+      conversation_id: conversationId,
+      business_id: businessId,
+      role: 'sistema',
+      content: 'Conecta un modelo de IA para que este agente responda automáticamente.',
+    })
+    return `Conversación registrada, pendiente de conectar la IA (${conversationId})`
+  }
+
+  if (!agent?.system_prompt) {
+    return `Conversación registrada, sin agente activo que responda (${conversationId})`
+  }
+
+  const { data: history } = await admin
+    .from('messages')
+    .select('role, content')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+    .limit(20)
+
+  const claudeMessages = (history ?? [])
+    .filter((m) => m.role !== 'sistema')
+    .map((m) => ({
+      role: (m.role === 'contacto' ? 'user' : 'assistant') as const,
+      content: m.content,
+    }))
+
+  if (claudeMessages.length === 0 || claudeMessages[claudeMessages.length - 1].role !== 'user') {
+    claudeMessages.push({ role: 'user', content: incomingText || 'Hola' })
+  }
+
+  const reply = await complete({
+    system: agent.system_prompt,
+    messages: claudeMessages,
+    effort: 'low',
+    maxTokens: 700,
+  })
+
+  await admin.from('messages').insert({
+    conversation_id: conversationId,
+    business_id: businessId,
+    role: 'agente_ia',
+    content: reply,
+  })
+
+  return `Agente respondió (conversación ${conversationId})`
 }

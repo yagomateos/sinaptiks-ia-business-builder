@@ -70,9 +70,12 @@ export function buildWorkflow(
   nodes.push(trigger)
   order.push(trigger.name)
 
-  // Un nodo por acción, encadenados. Cada uno reporta a la app qué hizo.
+  // Un nodo por acción, encadenados. Cada uno reporta a la app qué hizo, y
+  // todos leen del disparador original — no de lo que devolvió el paso
+  // anterior — para que ningún paso se quede sin el nombre, el teléfono o el
+  // mensaje que llegaron al principio.
   automation.actions.forEach((action, index) => {
-    const node = buildActionNode(automation, action, index, callbackUrl, callbackSecret)
+    const node = buildActionNode(automation, action, index, callbackUrl, callbackSecret, trigger.name)
     nodes.push(node)
     order.push(node.name)
   })
@@ -141,6 +144,7 @@ function buildActionNode(
   index: number,
   callbackUrl: string,
   callbackSecret: string,
+  triggerNodeName: string,
 ): N8nNode {
   // "esperar" es la única acción que n8n resuelve por sí mismo.
   if (action.type === 'esperar') {
@@ -178,7 +182,7 @@ function buildActionNode(
       // Todo el campo tiene que ser una expresión (prefijo `=`) para que n8n
       // evalúe el `{{ }}` de dentro. Un `{{ }}` suelto dentro de un JSON fijo
       // viaja como texto literal.
-      jsonBody: buildCallbackBody(automation, action, index, isLastStep),
+      jsonBody: buildCallbackBody(automation, action, index, isLastStep, triggerNodeName),
       options: { timeout: 15000 },
     },
   }
@@ -187,13 +191,21 @@ function buildActionNode(
 /**
  * Cuerpo de la llamada de vuelta: JSON literal salvo `payload`, que trae lo
  * que entregó el disparador (el mensaje entrante, el lead, lo que sea).
+ *
+ * `payload` lee siempre del nodo disparador por su nombre — nunca de `$json`
+ * a secas. `$json` es la salida del nodo inmediatamente anterior, así que en
+ * el segundo paso de una cadena sería la respuesta HTTP del primer callback,
+ * no el mensaje original. Referenciar el disparador por nombre hace que
+ * "payload" signifique siempre lo mismo, sin importar en qué paso esté.
  */
 function buildCallbackBody(
   automation: AutomationRecord,
   action: AutomationAction,
   index: number,
   isLastStep: boolean,
+  triggerNodeName: string,
 ): string {
+  const triggerRef = `$('${triggerNodeName}')`
   const fields = [
     `"automationId":${JSON.stringify(automation.id)}`,
     `"businessId":${JSON.stringify(automation.business_id)}`,
@@ -203,8 +215,8 @@ function buildCallbackBody(
     `"isLastStep":${isLastStep}`,
     // El nodo webhook no entrega el cuerpo tal cual: lo envuelve junto a las
     // cabeceras y la query en `body`. Los disparadores programados no tienen
-    // `body`, así que se cae a `$json`.
-    `"payload":{{ JSON.stringify($json.body || $json) }}`,
+    // `body`, así que se cae al propio objeto.
+    `"payload":{{ JSON.stringify(${triggerRef}.item.json.body || ${triggerRef}.item.json) }}`,
   ]
 
   return `={${fields.join(',')}}`

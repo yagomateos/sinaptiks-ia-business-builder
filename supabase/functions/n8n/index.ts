@@ -184,10 +184,22 @@ async function executeOnce(
   }
 
   // Una prueba sin datos crearía un contacto vacío en el CRM cada vez que el
-  // usuario pulsa el botón. Se rellena con un contacto de muestra reconocible:
-  // como `crear_lead` deduplica por email, probar diez veces deja uno solo.
+  // usuario pulsa el botón, así que se rellena con un contacto de muestra
+  // reconocible. Pero solo cuando la prueba viene realmente vacía: si alguien
+  // (una integración real, o un intento manual con datos concretos) ya trae
+  // nombre, email o teléfono, fusionar el email fijo de la muestra por encima
+  // de un campo que simplemente no vino relleno haría que ese contacto se
+  // confundiera por deduplicación con el de una prueba anterior sin relación.
+  const hasRealContactData = Boolean(
+    (payload as Record<string, unknown>)?.name ??
+      (payload as Record<string, unknown>)?.nombre ??
+      (payload as Record<string, unknown>)?.email ??
+      (payload as Record<string, unknown>)?.phone ??
+      (payload as Record<string, unknown>)?.telefono,
+  )
+
   await n8n.trigger(webhookPathFor({ id: stored.id }), {
-    ...SAMPLE_CONTACT,
+    ...(hasRealContactData ? {} : SAMPLE_CONTACT),
     ...payload,
     businessId,
     source: 'prueba_manual',
