@@ -123,6 +123,8 @@ describe('rulesProvider.generateReply', () => {
   it('offers to take booking details on a booking-intent message', async () => {
     const result = await reply({ incomingMessage: 'necesito una cita' })
     expect(result).toContain('qué día')
+    expect(result).toContain('hora')
+    expect(result).toContain('servicio')
   })
 
   it('treats a bare "sí" as confirmation only right after the bot offered to book', async () => {
@@ -136,6 +138,17 @@ describe('rulesProvider.generateReply', () => {
     const result = await reply({ incomingMessage: 'si', history })
     expect(result).toContain('nombre')
     expect(result).toContain('día')
+    // El servicio ya se sabe por contexto (el que se acaba de describir), no
+    // hace falta volver a preguntarlo.
+    expect(result).toContain('hora')
+  })
+
+  it('captures the follow-up after the generic booking-intent prompt too, not just the offer-acceptance one', async () => {
+    const history = [
+      makeMessage('agente_ia', 'Perfecto, dime tu nombre, qué día y a qué hora te viene bien, y qué servicio necesitas, y en cuanto pueda te lo confirmo.'),
+    ]
+    const result = await reply({ incomingMessage: 'Yago Mateos, mañana a las 10, limpieza dental', history })
+    expect(result).toContain('tomo nota')
   })
 
   it('does not treat a bare "sí" as a booking confirmation with no prior offer', async () => {
@@ -145,15 +158,15 @@ describe('rulesProvider.generateReply', () => {
 
   it('captures whatever comes right after asking for name and day', async () => {
     const history = [
-      makeMessage('agente_ia', 'Perfecto. Dime tu nombre y el día que prefieres, y en cuanto pueda te lo confirmo.'),
+      makeMessage('agente_ia', 'Perfecto, dime tu nombre, qué día y a qué hora te viene bien, y en cuanto pueda te lo confirmo.'),
     ]
-    const result = await reply({ incomingMessage: 'Yago Mateos y mañana', history })
+    const result = await reply({ incomingMessage: 'Yago Mateos, mañana a las 10', history })
     expect(result).toContain('tomo nota')
   })
 
   it('still escalates on a negative signal even mid-booking-flow', async () => {
     const history = [
-      makeMessage('agente_ia', 'Perfecto. Dime tu nombre y el día que prefieres, y en cuanto pueda te lo confirmo.'),
+      makeMessage('agente_ia', 'Perfecto, dime tu nombre, qué día y a qué hora te viene bien, y en cuanto pueda te lo confirmo.'),
     ]
     const result = await reply({
       incomingMessage: 'esto es una queja, va todo fatal',

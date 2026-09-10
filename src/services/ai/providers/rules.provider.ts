@@ -44,6 +44,12 @@ const AFFIRMATIVE_WORDS = new Set([
   'si', 'sí', 'vale', 'ok', 'okay', 'claro', 'de acuerdo', 'perfecto', 'genial', 'va bien',
 ])
 
+// Compartida entre los dos caminos de reserva y su detección de seguimiento
+// (`askedForBookingDetails`): con dos textos distintos, un cliente que
+// respondiera al segundo camino nunca coincidía con el substring del
+// primero y su respuesta caía al genérico.
+const BOOKING_DETAILS_PROMPT = 'Perfecto, dime tu nombre, qué día y a qué hora te viene bien,'
+
 export const rulesProvider: AiService = {
   providerKey: 'rules',
   isLive: false,
@@ -242,8 +248,13 @@ export const rulesProvider: AiService = {
       }
     }
 
+    // Pedir día y hora sin nombre ni servicio dejaba reservas a medias: el
+    // cliente contestaba "mañana a las 10" y el bot lo daba por confirmado sin
+    // saber ni quién era ni qué necesitaba. Se piden los cuatro datos juntos
+    // desde el primer mensaje de la reserva, aquí no hay un servicio ya
+    // conocido por contexto.
     if (BOOKING_SIGNALS.some((s) => normalized.includes(s))) {
-      return 'Claro, dime qué día y a qué hora te viene bien y te lo confirmo en cuanto pueda.'
+      return `${BOOKING_DETAILS_PROMPT} y qué servicio necesitas, y en cuanto pueda te lo confirmo.`
     }
 
     // Un "sí" suelto solo significa algo si el propio bot acaba de ofrecer
@@ -251,18 +262,20 @@ export const rulesProvider: AiService = {
     // cualquier otra cosa que no encajara con nada.
     const offeredBooking = lastAgentMessage?.includes('reserve un hueco') ?? false
     if (offeredBooking && AFFIRMATIVE_WORDS.has(normalized)) {
-      return 'Perfecto. Dime tu nombre y el día que prefieres, y en cuanto pueda te lo confirmo.'
+      // El servicio ya se conoce (es el que se acaba de describir), así que
+      // aquí solo faltan nombre, día y hora.
+      return `${BOOKING_DETAILS_PROMPT} y en cuanto pueda te lo confirmo.`
     }
 
     if (NEGATIVE_SIGNALS.some((s) => normalized.includes(s))) {
       return agent.handoff_rules.escalation_message
     }
 
-    // Último escalón sin IA: si lo último que pidió el bot fue justo el
-    // nombre y el día, la respuesta que sea — cualquiera — es esa. Va
-    // después de la señal negativa: una queja en mitad de la reserva debe
-    // seguir derivando, no confundirse con "esa es tu respuesta".
-    const askedForBookingDetails = lastAgentMessage?.includes('el día que prefieres') ?? false
+    // Último escalón sin IA: si lo último que pidió el bot fue justo nombre,
+    // día y hora (con o sin servicio), la respuesta que sea — cualquiera — es
+    // esa. Va después de la señal negativa: una queja en mitad de la reserva
+    // debe seguir derivando, no confundirse con "esa es tu respuesta".
+    const askedForBookingDetails = lastAgentMessage?.includes(BOOKING_DETAILS_PROMPT) ?? false
     if (askedForBookingDetails && normalized.length > 0) {
       return 'Genial, tomo nota — en cuanto alguien del equipo lo confirme te escribimos.'
     }
