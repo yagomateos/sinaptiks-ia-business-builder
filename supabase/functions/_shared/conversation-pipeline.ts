@@ -249,6 +249,14 @@ export async function respondWithAgent(
   // prueba, con independencia de si hay un agente que además le responda.
   await scoreAndSaveLead(admin, businessId, leadId, history ?? [], input.channel)
 
+  // "Pasar a humano" (manual o por las reglas de derivación) promete que el
+  // agente deja de responder. Sin este corte, el siguiente mensaje del
+  // contacto volvería a generar una respuesta de IA por encima de la persona
+  // que ya se hizo cargo.
+  if (handedOffAlready) {
+    return { conversationId, leadId, reply: null, reason: 'Conversación a cargo de una persona' }
+  }
+
   // Siempre exigiendo que el agente esté activo — si el que corresponde está
   // en pausa, no se sustituye por otro de un tipo distinto, que respondería
   // con la personalidad y el objetivo equivocados.
