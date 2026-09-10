@@ -12,6 +12,45 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
+/**
+ * Email genérico para automatizaciones (enviar_email, solicitar_resena) que
+ * no traen su propia plantilla — `action.config` llega vacío en todos los
+ * blueprints del catálogo. Mejor un email real con texto sencillo que
+ * seguir sin enviar nada.
+ */
+export function automationEmailHtml(input: { businessName: string; heading: string; bodyText: string }): string {
+  return `
+<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background-color:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#4f46e5;padding:24px 28px;">
+                <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">${escapeHtml(input.businessName)}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;">
+                <p style="margin:0 0 12px;color:#111827;font-size:17px;font-weight:700;">${escapeHtml(input.heading)}</p>
+                <p style="margin:0;color:#374151;font-size:15px;line-height:1.6;">${escapeHtml(input.bodyText)}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px;background:#f9fafb;border-top:1px solid #f0f0f2;">
+                <p style="margin:0;color:#9ca3af;font-size:12px;">Enviado automáticamente por tu asistente de Sinaptiks.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`.trim()
+}
+
 export interface AppointmentEmailInput {
   businessName: string
   nombre: string

@@ -18,6 +18,8 @@ import {
   respondWithAgent,
 } from '../_shared/conversation-pipeline.ts'
 import { sendTelegramMessage } from '../_shared/telegram-client.ts'
+import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
+import { automationEmailHtml } from '../_shared/email-templates.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -188,6 +190,33 @@ async function performAction(
       }
       return await sendTelegramBroadcast(admin, businessId, trigger, automationName)
     }
+
+    // enviar_email y solicitar_resena solo cubren aquí el caso en que el
+    // disparador ya trae un contacto concreto (mensaje_entrante o
+    // cambio_estado) — que es como llega el payload en todos los blueprints
+    // reales que combinan estos con esos disparadores. Un "programado" que
+    // manda un resumen o contenido genérico (no a un lead concreto)
+    // necesitaría decidir a qué destinatario del negocio va, y eso sigue sin
+    // resolver — cae al `default` de abajo, sigue como "pendiente".
+    case 'enviar_email':
+    case 'solicitar_resena': {
+      const directEmail = String(payload?.email ?? '')
+      if (!directEmail) {
+        return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
+      }
+
+      return await sendAutomationEmail(
+        admin,
+        businessId,
+        body.automationId,
+        actionType,
+        directEmail,
+        automationName,
+        actionType === 'solicitar_resena'
+          ? 'Nos encantaría conocer tu opinión — tu reseña nos ayuda muchísimo.'
+          : `Te escribimos sobre: ${automationName}.`,
+      )
+    }
     case 'crear_lead': {
       const { id, created } = await findOrCreateLead(
         admin,
@@ -253,27 +282,63 @@ async function performAction(
     }
 
     default: {
-      // enviar_whatsapp, enviar_email, agendar_cita, solicitar_resena:
-      // pendientes de conectar su canal.
-      await admin.from('activity_logs').insert({
-        business_id: businessId,
-        actor_label: 'Automatización',
-        action: `${automationName}: ${describeAction(actionType)}`,
-        entity_type: 'automation',
-        entity_id: body.automationId,
-        metadata: { actionType, pendiente_de_canal: true },
-      })
-
-      return `Paso registrado (${actionType} requiere conectar su canal)`
+      // enviar_whatsapp, agendar_cita, y enviar_email/solicitar_resena sin
+      // contacto directo (programado): pendientes de conectar su canal.
+      return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
     }
   }
 }
 
 const ACTION_DESCRIPTIONS: Record<string, string> = {
   enviar_whatsapp: 'mensaje de WhatsApp pendiente de enviar',
-  enviar_email: 'email pendiente de enviar',
   agendar_cita: 'cita pendiente de agendar',
+  // Solo se usan cuando de verdad no se pudo enviar (Resend sin configurar,
+  // o el disparador no trae un contacto directo) — con Resend activo y un
+  // contacto concreto, enviar_email/solicitar_resena sí salen de verdad.
+  enviar_email: 'email pendiente de enviar',
   solicitar_resena: 'solicitud de reseña pendiente',
+}
+
+async function recordPendingChannel(
+  businessId: string,
+  automationId: string,
+  automationName: string,
+  actionType: string,
+): Promise<string> {
+  await admin.from('activity_logs').insert({
+    business_id: businessId,
+    actor_label: 'Automatización',
+    action: `${automationName}: ${describeAction(actionType)}`,
+    entity_type: 'automation',
+    entity_id: automationId,
+    metadata: { actionType, pendiente_de_canal: true },
+  })
+
+  return `Paso registrado (${actionType} requiere conectar su canal)`
+}
+
+async function sendAutomationEmail(
+  admin: SupabaseClient,
+  businessId: string,
+  automationId: string,
+  actionType: string,
+  to: string,
+  automationName: string,
+  bodyText: string,
+): Promise<string> {
+  if (!isResendConfigured) {
+    return await recordPendingChannel(businessId, automationId, automationName, actionType)
+  }
+
+  const businessName = await getBusinessName(admin, businessId)
+
+  await sendEmail({
+    to,
+    subject: automationName,
+    html: automationEmailHtml({ businessName, heading: automationName, bodyText }),
+  })
+
+  return 'Email enviado'
 }
 
 /** Envía a un contacto concreto (payload trae su phone `tg:<chat_id>`). */

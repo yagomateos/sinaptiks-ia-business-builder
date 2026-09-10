@@ -123,12 +123,18 @@ export const AUTOMATION_CATEGORY_LABELS: Record<AutomationCategory, string> = {
  * el registro de actividad (ver `supabase/functions/n8n-callback/index.ts`).
  * Esta lista tiene que coincidir con los `case` reales de ese switch — si se
  * conecta un canal ahí, se quita el tipo de aquí en el mismo cambio.
+ *
+ * `enviar_email` se queda en la lista aunque ya envía de verdad cuando el
+ * disparador trae un contacto concreto (cambio_estado, mensaje_entrante) —
+ * varios blueprints del catálogo lo usan para resúmenes/contenido genérico
+ * sin ningún lead concreto (disparador "programado"), y ese caso sigue sin
+ * resolver: no hay a quién mandárselo. `solicitar_resena` solo se usa junto
+ * a un disparador con contacto directo, así que sí sale de la lista.
  */
 export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>([
   'enviar_whatsapp',
   'enviar_email',
   'agendar_cita',
-  'solicitar_resena',
 ])
 
 /**
