@@ -51,13 +51,13 @@ describe('isAutomationTriggerConnected', () => {
     ).toBe(true)
   })
 
-  it('is not connected for cambio_estado with delay_hours — no dispatch infra for delay yet', () => {
+  it('is connected for cambio_estado with delay_hours — scheduled_automation_jobs handles the wait', () => {
     expect(
       isAutomationTriggerConnected(
         { type: 'cambio_estado', config: { to: 'cliente', delay_hours: 24 } },
         [],
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('is not connected for cambio_estado with a responder_ia step — no real message to reply to', () => {

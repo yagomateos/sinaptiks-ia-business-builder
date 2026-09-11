@@ -149,9 +149,10 @@ export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>(
  * reglas no encontraron nada.
  *
  * `cambio_estado` dispara de verdad desde el trigger de Postgres
- * `notify_stage_change_automations` (migración `automation_stage_dispatch`),
- * salvo que tenga `delay_hours` — el disparo ahí es inmediato, no hay
- * infraestructura todavía para esperar antes de lanzarlo.
+ * `notify_stage_change_automations`: inmediato si no tiene `delay_hours`, o
+ * encolado en `scheduled_automation_jobs` y recogido por el cron
+ * `automation-scheduled-jobs-run` (cada 15 min) si lo tiene — ver la
+ * migración `scheduled_automation_jobs`.
  *
  * `programado` no necesita nada nuestro: n8n usa su propio nodo de horario
  * (`n8n-nodes-base.scheduleTrigger`, ver `buildTriggerNode` en
@@ -178,11 +179,7 @@ export function isAutomationTriggerConnected(
     return true
   }
 
-  if (trigger.type === 'cambio_estado') {
-    return !trigger.config.delay_hours
-  }
-
-  if (trigger.type === 'programado' || trigger.type === 'inactividad') {
+  if (trigger.type === 'cambio_estado' || trigger.type === 'programado' || trigger.type === 'inactividad') {
     return true
   }
 
