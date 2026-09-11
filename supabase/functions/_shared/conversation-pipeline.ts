@@ -802,7 +802,7 @@ interface HandoffRules {
 }
 
 /** Devuelve el motivo (para el aviso) si toca derivar, o null si no. */
-function detectHandoff(
+export function detectHandoff(
   rules: HandoffRules | null | undefined,
   ctx: { incomingText: string; reply: string; contactTurns: number },
 ): string | null {

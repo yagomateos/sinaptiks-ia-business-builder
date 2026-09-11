@@ -84,12 +84,12 @@ export function SystemGenerationPage() {
 
   const ready = system !== null && visibleStep >= BUILD_STEPS.length
 
-  if (error || profileQuery.isError) {
+  if (error || profileQuery.isError || servicesQuery.isError) {
     return (
       <Shell>
         <ErrorState
           title="No hemos podido construir tu sistema"
-          error={error ?? profileQuery.error}
+          error={error ?? profileQuery.error ?? servicesQuery.error}
           onRetry={() => window.location.reload()}
         />
       </Shell>

@@ -119,8 +119,11 @@ export const automationService = {
   },
 
   async remove(automation: Automation): Promise<void> {
+    // Si n8n no confirma la desactivación, no se borra la fila local: perder
+    // `n8n_workflow_id` dejaría el workflow real huérfano y activo, capaz de
+    // seguir mandando mensajes a leads reales sin que nada lo indique.
     if (automation.n8n_workflow_id) {
-      await n8nService.deactivateWorkflow(automation.n8n_workflow_id).catch(() => undefined)
+      await n8nService.deactivateWorkflow(automation.n8n_workflow_id)
     }
     await automationsRepository.remove(automation.id)
   },

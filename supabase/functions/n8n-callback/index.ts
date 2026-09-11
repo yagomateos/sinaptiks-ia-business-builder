@@ -82,6 +82,29 @@ Deno.serve(async (request) => {
     return new Response('No encontrada', { status: 404 })
   }
 
+  // El paso ejecutado tiene que ser exactamente el que está guardado en la
+  // automatización — nunca lo que diga el body. Comprobar solo que
+  // `automationId` pertenece al negocio no basta: si el secreto de callback
+  // se filtrara, alguien podría forzar cualquier `actionType`/`actionConfig`
+  // (enviar un email, crear una cita) sobre un negocio real reutilizando un
+  // `automationId` válido. Aquí se sustituye la config del body por la que
+  // de verdad está guardada, tal como pide CLAUDE.md: la definición se lee
+  // de la base de datos, nunca se confía en lo que llega en la petición.
+  const storedActions = Array.isArray(automation.actions)
+    ? (automation.actions as Array<{ type: string; config?: Record<string, unknown> }>)
+    : []
+  const storedAction =
+    typeof body.stepIndex === 'number' ? storedActions[body.stepIndex] : undefined
+
+  if (!storedAction || storedAction.type !== actionType) {
+    console.warn(
+      `Callback con acción no coincidente: automatización ${automationId}, paso ${body.stepIndex}, tipo recibido ${actionType}`,
+    )
+    return new Response('La acción no coincide con la automatización', { status: 400 })
+  }
+
+  body.actionConfig = storedAction.config ?? {}
+
   try {
     const detail = await performAction(
       body,

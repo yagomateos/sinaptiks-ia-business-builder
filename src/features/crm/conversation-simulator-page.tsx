@@ -95,7 +95,7 @@ export function ConversationSimulatorPage() {
     enabled: Boolean(businessId),
   })
 
-  const agents = agentsQuery.data ?? []
+  const agents = useMemo(() => agentsQuery.data ?? [], [agentsQuery.data])
   const agent: AiAgent | undefined =
     agents.find((a) => a.id === agentId) ?? agents[0]
 
@@ -108,13 +108,19 @@ export function ConversationSimulatorPage() {
   }, [messages.length])
 
   // La puntuación se recalcula en cada mensaje: el usuario ve cómo se mueve.
+  // La duración de llamada sale del `created_at` del último mensaje (no de
+  // `Date.now()` en el propio render) para que el cálculo sea puro y no
+  // dependa de cuándo React decida repetir el render.
   const score = useMemo(() => {
     if (messages.length === 0) return null
+    const lastMessageAt = messages[messages.length - 1].created_at
     return scoreLead({
       messages,
       channel,
       callDurationSeconds:
-        channel === 'telefono' ? Math.round((Date.now() - startedAt) / 1000) : undefined,
+        channel === 'telefono'
+          ? Math.round((new Date(lastMessageAt).getTime() - startedAt) / 1000)
+          : undefined,
       sharedContactDetails: Boolean(contactEmail.trim() || contactPhone.trim()),
     })
   }, [messages, channel, startedAt, contactEmail, contactPhone])

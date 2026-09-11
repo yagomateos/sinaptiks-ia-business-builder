@@ -4,6 +4,7 @@
  */
 import type {
   AgentType,
+  AppointmentStatus,
   AutomationAction,
   AutomationCategory,
   AutomationStatus,
@@ -98,6 +99,13 @@ export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = {
   frio: 'Frío',
   templado: 'Templado',
   caliente: 'Caliente',
+}
+
+export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
+  pendiente: 'Pendiente',
+  confirmada: 'Confirmada',
+  cancelada: 'Cancelada',
+  error: 'Error al crear',
 }
 
 export const PLAN_LABELS: Record<PlanKey, string> = {

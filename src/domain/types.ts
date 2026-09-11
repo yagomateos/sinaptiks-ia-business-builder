@@ -216,6 +216,30 @@ export interface Lead {
 }
 
 /* ------------------------------------------------------------------ */
+/* Appointments                                                        */
+/* ------------------------------------------------------------------ */
+
+export type AppointmentStatus = 'pendiente' | 'confirmada' | 'cancelada' | 'error'
+
+/** Cita real creada por `agendar_cita` (ver n8n-callback). Hoy solo Google Calendar. */
+export interface Appointment {
+  id: UUID
+  business_id: UUID
+  lead_id: UUID | null
+  automation_id: UUID | null
+  service: string
+  starts_at: ISODate
+  ends_at: ISODate
+  timezone: string
+  provider: 'google_calendar'
+  external_event_id: string | null
+  status: AppointmentStatus
+  notes: string | null
+  created_at: ISODate
+  updated_at: ISODate
+}
+
+/* ------------------------------------------------------------------ */
 /* Conversations                                                       */
 /* ------------------------------------------------------------------ */
 

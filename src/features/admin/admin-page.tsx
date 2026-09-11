@@ -130,27 +130,33 @@ export function AdminPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">Últimos fallos de automatización</CardTitle>
               </CardHeader>
-              <CardContent className="divide-y">
-                {(errorsQuery.data ?? []).map((err) => (
-                  <div key={err.id} className="py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-medium">
-                        {err.automation_name}
-                        <span className="font-normal text-muted-foreground"> · {err.business_name}</span>
+              <CardContent className={errorsQuery.isError ? undefined : 'divide-y'}>
+                {errorsQuery.isError ? (
+                  <ErrorState error={errorsQuery.error} onRetry={() => errorsQuery.refetch()} />
+                ) : (
+                  <>
+                    {(errorsQuery.data ?? []).map((err) => (
+                      <div key={err.id} className="py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate text-sm font-medium">
+                            {err.automation_name}
+                            <span className="font-normal text-muted-foreground"> · {err.business_name}</span>
+                          </p>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatRelative(err.started_at)}
+                          </span>
+                        </div>
+                        {err.error_message && (
+                          <p className="mt-1 text-xs text-destructive">{err.error_message}</p>
+                        )}
+                      </div>
+                    ))}
+                    {(errorsQuery.data ?? []).length === 0 && (
+                      <p className="py-8 text-center text-sm text-muted-foreground">
+                        Sin fallos recientes en ningún negocio.
                       </p>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatRelative(err.started_at)}
-                      </span>
-                    </div>
-                    {err.error_message && (
-                      <p className="mt-1 text-xs text-destructive">{err.error_message}</p>
                     )}
-                  </div>
-                ))}
-                {(errorsQuery.data ?? []).length === 0 && (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Sin fallos recientes en ningún negocio.
-                  </p>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -161,28 +167,34 @@ export function AdminPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">Últimos negocios</CardTitle>
               </CardHeader>
-              <CardContent className="divide-y">
-                {(businessesQuery.data ?? []).map((business) => (
-                  <div key={business.id} className="flex items-center gap-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{business.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {INDUSTRY_LABELS[business.industry]}
-                        {business.city ? ` · ${business.city}` : ''}
+              <CardContent className={businessesQuery.isError ? undefined : 'divide-y'}>
+                {businessesQuery.isError ? (
+                  <ErrorState error={businessesQuery.error} onRetry={() => businessesQuery.refetch()} />
+                ) : (
+                  <>
+                    {(businessesQuery.data ?? []).map((business) => (
+                      <div key={business.id} className="flex items-center gap-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{business.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {INDUSTRY_LABELS[business.industry]}
+                            {business.city ? ` · ${business.city}` : ''}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {formatRelative(business.created_at)}
+                        </span>
+                        <Badge variant={business.system_generated_at ? 'success' : 'outline'}>
+                          {business.system_generated_at ? 'Sistema activo' : 'Sin generar'}
+                        </Badge>
+                      </div>
+                    ))}
+                    {(businessesQuery.data ?? []).length === 0 && (
+                      <p className="py-8 text-center text-sm text-muted-foreground">
+                        Todavía no hay negocios.
                       </p>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {formatRelative(business.created_at)}
-                    </span>
-                    <Badge variant={business.system_generated_at ? 'success' : 'outline'}>
-                      {business.system_generated_at ? 'Sistema activo' : 'Sin generar'}
-                    </Badge>
-                  </div>
-                ))}
-                {(businessesQuery.data ?? []).length === 0 && (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Todavía no hay negocios.
-                  </p>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -193,25 +205,31 @@ export function AdminPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">Últimos usuarios</CardTitle>
               </CardHeader>
-              <CardContent className="divide-y">
-                {(usersQuery.data ?? []).map((user) => (
-                  <div key={user.id} className="flex items-center gap-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{user.full_name ?? 'Sin nombre'}</p>
-                      <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {formatRelative(user.created_at)}
-                    </span>
-                    {user.platform_role === 'super_admin' && (
-                      <Badge variant="default">Sinaptkis</Badge>
+              <CardContent className={usersQuery.isError ? undefined : 'divide-y'}>
+                {usersQuery.isError ? (
+                  <ErrorState error={usersQuery.error} onRetry={() => usersQuery.refetch()} />
+                ) : (
+                  <>
+                    {(usersQuery.data ?? []).map((user) => (
+                      <div key={user.id} className="flex items-center gap-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{user.full_name ?? 'Sin nombre'}</p>
+                          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                        </div>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {formatRelative(user.created_at)}
+                        </span>
+                        {user.platform_role === 'super_admin' && (
+                          <Badge variant="default">Sinaptkis</Badge>
+                        )}
+                      </div>
+                    ))}
+                    {(usersQuery.data ?? []).length === 0 && (
+                      <p className="py-8 text-center text-sm text-muted-foreground">
+                        Todavía no hay usuarios.
+                      </p>
                     )}
-                  </div>
-                ))}
-                {(usersQuery.data ?? []).length === 0 && (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Todavía no hay usuarios.
-                  </p>
+                  </>
                 )}
               </CardContent>
             </Card>

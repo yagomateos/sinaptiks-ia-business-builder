@@ -14,20 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
 import { ErrorState, LoadingState } from '@/components/shared/states'
 import { leadsRepository } from '@/services/repositories/leads.repository'
-import { LEAD_STAGE_LABELS, LEAD_TEMPERATURE_LABELS } from '@/domain/vocabulary'
+import { appointmentsRepository } from '@/services/repositories/appointments.repository'
 import {
-  LEAD_STAGES,
-  LEAD_TEMPERATURES,
-  type LeadStage,
-  type LeadTemperature,
-} from '@/domain/types'
+  APPOINTMENT_STATUS_LABELS,
+  LEAD_STAGE_LABELS,
+  LEAD_TEMPERATURE_LABELS,
+} from '@/domain/vocabulary'
+import { LEAD_STAGES, LEAD_TEMPERATURES, type LeadStage, type LeadTemperature } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
 import { PotentialBadge, PotentialBar } from './potential-badge'
 import { useEditableDraft } from '@/hooks/use-editable-draft'
-import { cn, formatRelative } from '@/lib/utils'
+import { cn, formatDateTime, formatRelative } from '@/lib/utils'
 
 export function LeadDetailPage() {
   const { leadId = '' } = useParams()
@@ -39,6 +40,12 @@ export function LeadDetailPage() {
   const query = useQuery({
     queryKey: ['lead', leadId],
     queryFn: () => leadsRepository.getById(leadId),
+    enabled: Boolean(leadId),
+  })
+
+  const appointmentsQuery = useQuery({
+    queryKey: ['lead-appointments', leadId],
+    queryFn: () => appointmentsRepository.listForLead(leadId),
     enabled: Boolean(leadId),
   })
 
@@ -250,6 +257,40 @@ export function LeadDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {(appointmentsQuery.data?.length ?? 0) > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Citas</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {appointmentsQuery.data!.map((appointment) => (
+                  <div key={appointment.id} className="flex items-start justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{appointment.service}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(appointment.starts_at)}
+                      </p>
+                    </div>
+                    <Badge
+                      variant={
+                        appointment.status === 'confirmada'
+                          ? 'success'
+                          : appointment.status === 'error'
+                            ? 'destructive'
+                            : appointment.status === 'cancelada'
+                              ? 'outline'
+                              : 'secondary'
+                      }
+                      className="shrink-0"
+                    >
+                      {APPOINTMENT_STATUS_LABELS[appointment.status]}
+                    </Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {draft.potential_label && draft.potential_score !== null && (
             <Card>
