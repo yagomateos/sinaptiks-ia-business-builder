@@ -11,6 +11,7 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - `agendar_cita` conectado en `n8n-callback` (contacto directo con fecha + email).
 - Botón real "Conectar con Google" en Canales.
 - **Credenciales configuradas y conexión verificada en producción** (2026-09-11): `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` puestos como secrets; hubo que corregir dos bugs reales para completarla — la credencial de Google tenía que ser de tipo "Web application" (no "Desktop app", que solo admite `redirect_uri=http://localhost`), y el callback tiraba un 500 (`Response.redirect` con URL relativa) cuando `APP_URL` no estaba configurado. La cuenta de prueba está añadida como test user en la pantalla de consentimiento OAuth (la app sigue en modo "Testing" en Google — para que cualquier negocio pueda conectarla sin ese límite hace falta pasar la verificación de Google para el scope de Calendar).
+- **Token de sesión fuera de la URL** (revisión profesional, 2026-09-11): `/start` recibía el JWT de sesión completo como `?token=`, expuesto en historial del navegador y logs de acceso. Nueva tabla `oauth_start_codes` (migración `20260116000000_oauth_start_codes.sql`, sin ninguna política RLS — solo la service role la toca) + endpoint `POST /mint-start-code` (autenticado normalmente, comprueba pertenencia al negocio) que emite un código de un solo uso y 2 minutos de vida; `/start` lo consume y lo borra, coincida o no. Solo ese código viaja ahora en la URL del navegador.
 
 ## 2. Clasificador de intención ✅ Implementado
 

@@ -222,10 +222,24 @@ function IntegrationCard({
       const token = data.session?.access_token
       if (!token) throw new Error('Sesión no válida')
 
+      // El JWT de sesión no viaja por la URL: se cambia aquí, con un fetch
+      // autenticado normal, por un código de un solo uso y 2 minutos de
+      // vida — eso es lo único que lleva la navegación del navegador.
+      const mintResponse = await fetch(`${apiBaseUrl}/google-calendar-oauth/mint-start-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ businessId }),
+      })
+      if (!mintResponse.ok) {
+        const payload = await mintResponse.json().catch(() => ({}) as { error?: string })
+        throw new Error(payload.error ?? 'No hemos podido iniciar la conexión con Google.')
+      }
+      const { code } = (await mintResponse.json()) as { code: string }
+
       // Navegación real del navegador, no un fetch: Google necesita
       // redirigir de verdad al consentimiento y volver — un XHR no puede
       // llevar al usuario a esa pantalla.
-      window.location.href = `${apiBaseUrl}/google-calendar-oauth/start?businessId=${businessId}&token=${encodeURIComponent(token)}`
+      window.location.href = `${apiBaseUrl}/google-calendar-oauth/start?businessId=${businessId}&code=${code}`
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido iniciar la conexión.'),

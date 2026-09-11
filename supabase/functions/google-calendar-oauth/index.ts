@@ -7,11 +7,21 @@
  * Sin GOOGLE_CLIENT_ID/SECRET configurados, cualquier ruta aquí devuelve un
  * error claro — nunca se finge una conexión (ver isGoogleCalendarConfigured).
  *
- * GET /start?businessId=...&token=<jwt>   → redirige al consentimiento de Google
- * GET /callback?code=...&state=<businessId> → intercambia el código, guarda el token
+ * `/start` es una navegación de navegador (`window.location.href`), no un
+ * fetch — no puede llevar la cabecera `Authorization`, así que no puede
+ * autenticarse como el resto de Edge Functions. Antes recibía el JWT de
+ * sesión entero como `?token=`, expuesto en el historial del navegador y en
+ * cualquier log de acceso. Ahora el frontend pide primero un código de un
+ * solo uso y corta vida (`mint-start-code`, autenticado normalmente) y solo
+ * ese código viaja en la URL — `/start` lo consume una vez y lo borra.
+ *
+ * POST /mint-start-code (sesión real)         → { code } de un solo uso, expira en 2 min
+ * GET  /start?businessId=...&code=<uuid>      → redirige al consentimiento de Google
+ * GET  /callback?code=...&state=<businessId>  → intercambia el código, guarda el token
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { isGoogleCalendarConfigured } from '../_shared/calendar/index.ts'
+import { assertBusinessAccess, authenticate, CORS_HEADERS, errorResponse, HttpError, json as jsonResponse } from '../_shared/auth.ts'
 
 const CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
@@ -30,12 +40,20 @@ const admin = createClient(
 )
 
 Deno.serve(async (request) => {
+  if (request.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS })
+  }
+
   const url = new URL(request.url)
   const segments = url.pathname.split('/').filter(Boolean)
   const step = segments[segments.length - 1]
 
   if (!isGoogleCalendarConfigured) {
     return json({ error: 'Google Calendar no está configurado todavía (faltan credenciales OAuth).' }, 503)
+  }
+
+  if (step === 'mint-start-code') {
+    return await handleMintStartCode(request)
   }
 
   if (step === 'start') {
@@ -49,25 +67,70 @@ Deno.serve(async (request) => {
   return json({ error: 'Ruta desconocida' }, 404)
 })
 
+const START_CODE_TTL_MS = 2 * 60 * 1000
+
+/**
+ * Único paso de este flujo con sesión real disponible (fetch autenticado,
+ * no la navegación de `/start`) — aquí se comprueba la pertenencia al
+ * negocio, igual que en cualquier otra Edge Function, antes de emitir un
+ * código de un solo uso que `/start` consumirá segundos después.
+ */
+async function handleMintStartCode(request: Request): Promise<Response> {
+  try {
+    if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+
+    const ctx = await authenticate(request)
+    const { businessId } = (await request.json().catch(() => ({}))) as { businessId?: string }
+    await assertBusinessAccess(ctx, businessId ?? '')
+
+    // Solo se acumulan si alguien empieza el flujo y nunca vuelve de Google —
+    // una limpieza perezosa en cada emisión basta para una tabla tan pequeña.
+    await admin.from('oauth_start_codes').delete().lt('expires_at', new Date().toISOString())
+
+    const { data, error } = await admin
+      .from('oauth_start_codes')
+      .insert({
+        user_id: ctx.userId,
+        business_id: businessId,
+        provider: 'google_calendar',
+        expires_at: new Date(Date.now() + START_CODE_TTL_MS).toISOString(),
+      })
+      .select('code')
+      .single()
+
+    if (error) throw new HttpError(500, 'No se pudo iniciar la conexión')
+
+    return jsonResponse({ code: data.code })
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
 async function handleStart(url: URL): Promise<Response> {
   const businessId = url.searchParams.get('businessId')
-  const token = url.searchParams.get('token')
-  if (!businessId || !token) return json({ error: 'Faltan businessId o token' }, 400)
+  const code = url.searchParams.get('code')
+  if (!businessId || !code) return json({ error: 'Faltan businessId o code' }, 400)
 
-  // Mismo control que assertBusinessAccess en _shared/auth.ts, adaptado a un
-  // GET de navegador (el token llega por query, no por cabecera Authorization
-  // — Google no reenvía cabeceras al volver del consentimiento).
-  const asUser = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  })
-  const { data: userData, error: userError } = await asUser.auth.getUser()
-  if (userError || !userData.user) return json({ error: 'Sesión no válida' }, 401)
+  // El código es de un solo uso: se borra al leerlo, coincida o no, para que
+  // nadie pueda reintentarlo aunque lo haya visto (historial del navegador,
+  // un log) después de que expire su ventana de 2 minutos.
+  const { data: startCode } = await admin
+    .from('oauth_start_codes')
+    .delete()
+    .eq('code', code)
+    .eq('business_id', businessId)
+    .select('user_id, expires_at')
+    .maybeSingle()
 
-  const { data: membership } = await asUser
+  if (!startCode || new Date(startCode.expires_at).getTime() < Date.now()) {
+    return json({ error: 'El enlace de conexión ha caducado. Vuelve a intentarlo desde Canales.' }, 401)
+  }
+
+  const { data: membership } = await admin
     .from('business_members')
     .select('role')
     .eq('business_id', businessId)
-    .eq('user_id', userData.user.id)
+    .eq('user_id', startCode.user_id)
     .maybeSingle()
   if (!membership) return json({ error: 'No tienes acceso a este negocio' }, 403)
 
