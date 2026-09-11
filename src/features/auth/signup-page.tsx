@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { MailCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -10,60 +13,53 @@ import { AuthLayout } from './auth-layout'
 
 const MIN_PASSWORD_LENGTH = 8
 
+const signupSchema = z.object({
+  fullName: z.string().trim().min(2, 'Escribe tu nombre.'),
+  email: z.string().trim().min(1, 'Escribe tu email.').email('Escribe un email válido.'),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH, `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`),
+})
+
+type SignupValues = z.infer<typeof signupSchema>
+
 export function SignUpPage() {
   const { signUp } = useAuth()
   const navigate = useNavigate()
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false)
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
 
-  function validate(): string | null {
-    if (fullName.trim().length < 2) return 'Escribe tu nombre.'
-    if (!email.includes('@')) return 'Escribe un email válido.'
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      return `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`
-    }
-    return null
-  }
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<SignupValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: { fullName: '', email: '', password: '' },
+  })
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-
-    const validationError = validate()
-    if (validationError) {
-      setError(validationError)
-      return
-    }
-
-    setError(null)
-    setSubmitting(true)
-
+  async function onSubmit(values: SignupValues) {
     try {
-      const { needsConfirmation } = await signUp(email.trim(), password, fullName.trim())
+      const { needsConfirmation } = await signUp(values.email, values.password, values.fullName)
 
       if (needsConfirmation) {
-        setAwaitingConfirmation(true)
+        setConfirmationEmail(values.email)
       } else {
         toast.success('Cuenta creada. Vamos a montar tu sistema.')
         navigate('/nuevo-negocio', { replace: true })
       }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'No hemos podido crear tu cuenta.'
-      setError(message)
+      setError('root', { message })
       toast.error(message)
-    } finally {
-      setSubmitting(false)
     }
   }
 
-  if (awaitingConfirmation) {
+  if (confirmationEmail) {
     return (
       <AuthLayout
         title="Confirma tu email"
-        subtitle={`Te hemos enviado un correo a ${email}. Ábrelo para activar tu cuenta y empezar.`}
+        subtitle={`Te hemos enviado un correo a ${confirmationEmail}. Ábrelo para activar tu cuenta y empezar.`}
       >
         <div className="flex items-center gap-3 rounded-lg border bg-secondary/40 p-4">
           <MailCheck className="h-5 w-5 shrink-0 text-primary" />
@@ -91,17 +87,17 @@ export function SignUpPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-1.5">
           <Label htmlFor="fullName">Tu nombre</Label>
           <Input
             id="fullName"
             autoComplete="name"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
             placeholder="María García"
+            aria-invalid={Boolean(errors.fullName)}
+            {...register('fullName')}
           />
+          {errors.fullName && <p className="text-xs text-destructive">{errors.fullName.message}</p>}
         </div>
 
         <div className="space-y-1.5">
@@ -110,11 +106,11 @@ export function SignUpPage() {
             id="email"
             type="email"
             autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
             placeholder="tu@empresa.com"
+            aria-invalid={Boolean(errors.email)}
+            {...register('email')}
           />
+          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
         </div>
 
         <div className="space-y-1.5">
@@ -123,16 +119,16 @@ export function SignUpPage() {
             id="password"
             type="password"
             autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            aria-invalid={Boolean(errors.password)}
+            {...register('password')}
           />
           <p className="text-xs text-muted-foreground">Mínimo {MIN_PASSWORD_LENGTH} caracteres.</p>
+          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
-        <Button type="submit" className="w-full" loading={submitting}>
+        <Button type="submit" className="w-full" loading={isSubmitting}>
           Crear cuenta
         </Button>
       </form>

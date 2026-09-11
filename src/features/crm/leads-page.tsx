@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Columns3, List, MessagesSquare, Plus, Search, Users } from 'lucide-react'
@@ -271,6 +274,14 @@ function LeadsKanban({ leads, businessId }: { leads: Lead[]; businessId: string 
   )
 }
 
+const createLeadSchema = z.object({
+  fullName: z.string().trim().min(2, 'Escribe el nombre del contacto.'),
+  email: z.union([z.literal(''), z.string().trim().email('Escribe un email válido.')]),
+  phone: z.string(),
+})
+
+type CreateLeadValues = z.infer<typeof createLeadSchema>
+
 function CreateLeadDialog({
   open,
   onOpenChange,
@@ -281,18 +292,25 @@ function CreateLeadDialog({
   businessId: string
 }) {
   const queryClient = useQueryClient()
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [error, setError] = useState<string | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<CreateLeadValues>({
+    resolver: zodResolver(createLeadSchema),
+    defaultValues: { fullName: '', email: '', phone: '' },
+  })
 
   const create = useMutation({
-    mutationFn: () =>
+    mutationFn: (values: CreateLeadValues) =>
       leadsRepository.create({
         business_id: businessId,
-        full_name: fullName.trim(),
-        email: email.trim() || null,
-        phone: phone.trim() || null,
+        full_name: values.fullName,
+        email: values.email || null,
+        phone: values.phone.trim() || null,
         source: 'manual',
         stage: 'nuevo',
         temperature: 'templado',
@@ -306,23 +324,17 @@ function CreateLeadDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads', businessId] })
       toast.success('Contacto añadido')
-      setFullName('')
-      setEmail('')
-      setPhone('')
+      reset()
       onOpenChange(false)
     },
     onError: (caught) =>
-      setError(caught instanceof Error ? caught.message : 'No hemos podido crear el contacto.'),
+      setError('root', {
+        message: caught instanceof Error ? caught.message : 'No hemos podido crear el contacto.',
+      }),
   })
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (fullName.trim().length < 2) {
-      setError('Escribe el nombre del contacto.')
-      return
-    }
-    setError(null)
-    create.mutate()
+  function onSubmit(values: CreateLeadValues) {
+    create.mutate(values)
   }
 
   return (
@@ -335,15 +347,16 @@ function CreateLeadDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="leadName">Nombre</Label>
             <Input
               id="leadName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
               autoFocus
+              aria-invalid={Boolean(errors.fullName)}
+              {...register('fullName')}
             />
+            {errors.fullName && <p className="text-xs text-destructive">{errors.fullName.message}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -351,23 +364,24 @@ function CreateLeadDialog({
             <Input
               id="leadEmail"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              aria-invalid={Boolean(errors.email)}
+              {...register('email')}
             />
+            {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="leadPhone">Teléfono</Label>
-            <Input id="leadPhone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input id="leadPhone" {...register('phone')} />
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" loading={create.isPending}>
+            <Button type="submit" loading={isSubmitting || create.isPending}>
               Añadir
             </Button>
           </DialogFooter>

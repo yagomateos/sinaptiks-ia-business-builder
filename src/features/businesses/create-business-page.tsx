@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { ArrowRight } from 'lucide-react'
@@ -21,26 +23,47 @@ import { businessesRepository } from '@/services/repositories/businesses.reposit
 import { INDUSTRIES, type Industry } from '@/domain/types'
 import { INDUSTRY_LABELS } from '@/domain/vocabulary'
 
+const createBusinessSchema = z.object({
+  name: z.string().trim().min(2, 'Escribe el nombre de tu negocio.'),
+  industry: z.string().min(1, 'Elige el sector al que te dedicas.'),
+  website: z.union([z.literal(''), z.string().trim().url('Escribe una URL válida (https://...).')]),
+  city: z.string(),
+  country: z.string(),
+  description: z.string(),
+})
+
+type CreateBusinessValues = z.infer<typeof createBusinessSchema>
+
 export function CreateBusinessPage() {
   const { user } = useAuth()
   const { businesses, refresh, setActiveBusinessId } = useBusiness()
   const navigate = useNavigate()
 
-  const [name, setName] = useState('')
-  const [industry, setIndustry] = useState<Industry | ''>('')
-  const [website, setWebsite] = useState('')
-  const [city, setCity] = useState('')
-  const [country, setCountry] = useState('España')
-  const [description, setDescription] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
   const isFirstBusiness = businesses.length === 0
 
+  const {
+    register,
+    handleSubmit,
+    control,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<CreateBusinessValues>({
+    resolver: zodResolver(createBusinessSchema),
+    defaultValues: { name: '', industry: '', website: '', city: '', country: 'España', description: '' },
+  })
+
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: (values: CreateBusinessValues) => {
       if (!user) throw new Error('No hay sesión iniciada.')
       return businessesRepository.create(
-        { name, industry: industry as Industry, website, city, country, description },
+        {
+          name: values.name,
+          industry: values.industry as Industry,
+          website: values.website,
+          city: values.city,
+          country: values.country,
+          description: values.description,
+        },
         user.id,
       )
     },
@@ -51,25 +74,13 @@ export function CreateBusinessPage() {
     },
     onError: (caught) => {
       const message = caught instanceof Error ? caught.message : 'No hemos podido crear el negocio.'
-      setError(message)
+      setError('root', { message })
       toast.error(message)
     },
   })
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-
-    if (name.trim().length < 2) {
-      setError('Escribe el nombre de tu negocio.')
-      return
-    }
-    if (!industry) {
-      setError('Elige el sector al que te dedicas.')
-      return
-    }
-
-    setError(null)
-    mutation.mutate()
+  function onSubmit(values: CreateBusinessValues) {
+    mutation.mutate(values)
   }
 
   return (
@@ -95,55 +106,56 @@ export function CreateBusinessPage() {
             Con esto creamos tu espacio. Después te haremos unas preguntas para diseñar tu sistema.
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5" noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="name">Nombre del negocio</Label>
               <Input
                 id="name"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
                 placeholder="Clínica Dental Sonrisa"
                 autoFocus
+                aria-invalid={Boolean(errors.name)}
+                {...register('name')}
               />
+              {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="industry">Sector</Label>
-              <Select value={industry} onValueChange={(value) => setIndustry(value as Industry)}>
-                <SelectTrigger id="industry">
-                  <SelectValue placeholder="Elige tu sector" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INDUSTRIES.map((key) => (
-                    <SelectItem key={key} value={key}>
-                      {INDUSTRY_LABELS[key]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Usamos el sector para proponerte lo que mejor funciona en negocios como el tuyo.
-              </p>
+              <Controller
+                name="industry"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="industry" aria-invalid={Boolean(errors.industry)}>
+                      <SelectValue placeholder="Elige tu sector" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INDUSTRIES.map((key) => (
+                        <SelectItem key={key} value={key}>
+                          {INDUSTRY_LABELS[key]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.industry ? (
+                <p className="text-xs text-destructive">{errors.industry.message}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Usamos el sector para proponerte lo que mejor funciona en negocios como el tuyo.
+                </p>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="city">Ciudad</Label>
-                <Input
-                  id="city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Madrid"
-                />
+                <Input id="city" placeholder="Madrid" {...register('city')} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="country">País</Label>
-                <Input
-                  id="country"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                />
+                <Input id="country" {...register('country')} />
               </div>
             </div>
 
@@ -154,10 +166,11 @@ export function CreateBusinessPage() {
               <Input
                 id="website"
                 type="url"
-                value={website}
-                onChange={(e) => setWebsite(e.target.value)}
                 placeholder="https://tunegocio.com"
+                aria-invalid={Boolean(errors.website)}
+                {...register('website')}
               />
+              {errors.website && <p className="text-xs text-destructive">{errors.website.message}</p>}
             </div>
 
             <div className="space-y-1.5">
@@ -166,16 +179,15 @@ export function CreateBusinessPage() {
               </Label>
               <Textarea
                 id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Clínica dental en el centro de Madrid, especializada en implantes y ortodoncia."
                 rows={3}
+                {...register('description')}
               />
             </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
-            <Button type="submit" className="w-full" loading={mutation.isPending}>
+            <Button type="submit" className="w-full" loading={isSubmitting || mutation.isPending}>
               Continuar
               <ArrowRight />
             </Button>

@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -7,28 +9,35 @@ import { Label } from '@/components/ui/label'
 import { useAuth } from './auth-context'
 import { AuthLayout } from './auth-layout'
 
+const loginSchema = z.object({
+  email: z.string().trim().min(1, 'Escribe tu email.').email('Escribe un email válido.'),
+  password: z.string().min(1, 'Escribe tu contraseña.'),
+})
+
+type LoginValues = z.infer<typeof loginSchema>
+
 export function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    setError(null)
-    setSubmitting(true)
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  })
 
+  async function onSubmit(values: LoginValues) {
     try {
-      await signIn(email.trim(), password)
+      await signIn(values.email, values.password)
       navigate('/app', { replace: true })
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'No hemos podido iniciar sesión.'
-      setError(message)
+      setError('root', { message })
       toast.error(message)
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -45,19 +54,18 @@ export function LoginPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
             type="email"
             autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
             placeholder="tu@empresa.com"
-            aria-invalid={Boolean(error)}
+            aria-invalid={Boolean(errors.email)}
+            {...register('email')}
           />
+          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
         </div>
 
         <div className="space-y-1.5">
@@ -71,16 +79,15 @@ export function LoginPage() {
             id="password"
             type="password"
             autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={Boolean(error)}
+            aria-invalid={Boolean(errors.password)}
+            {...register('password')}
           />
+          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
-        <Button type="submit" className="w-full" loading={submitting}>
+        <Button type="submit" className="w-full" loading={isSubmitting}>
           Entrar
         </Button>
       </form>

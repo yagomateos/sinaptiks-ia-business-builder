@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Controller, useForm, useWatch } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, FileText, Globe, HelpCircle, Layers, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -320,6 +323,33 @@ function ChunksDialog({
   )
 }
 
+const addKnowledgeSchema = z
+  .object({
+    title: z.string().trim().min(2, 'Ponle un título.'),
+    sourceType: z.string(),
+    content: z.string(),
+    url: z.string(),
+  })
+  .superRefine((data, ctx) => {
+    const sourceType = data.sourceType as KnowledgeSourceType
+
+    if (sourceType === 'url') {
+      if (!data.url.trim()) {
+        ctx.addIssue({ code: 'custom', message: 'Escribe la dirección de la página.', path: ['url'] })
+      }
+      return
+    }
+
+    if (data.content.trim().length < 10) {
+      const message = FILE_SOURCE_TYPES.includes(sourceType)
+        ? 'Sube un archivo con algo de texto dentro.'
+        : 'Escribe algo de contenido.'
+      ctx.addIssue({ code: 'custom', message, path: ['content'] })
+    }
+  })
+
+type AddKnowledgeValues = z.infer<typeof addKnowledgeSchema>
+
 function AddKnowledgeDialog({
   open,
   onOpenChange,
@@ -330,58 +360,50 @@ function AddKnowledgeDialog({
   businessId: string
 }) {
   const queryClient = useQueryClient()
-  const [title, setTitle] = useState('')
-  const [sourceType, setSourceType] = useState<KnowledgeSourceType>('texto')
-  const [content, setContent] = useState('')
-  const [url, setUrl] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
 
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    getValues,
+    reset,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<AddKnowledgeValues>({
+    resolver: zodResolver(addKnowledgeSchema),
+    defaultValues: { title: '', sourceType: 'texto', content: '', url: '' },
+  })
+
+  const sourceType = useWatch({ control, name: 'sourceType' }) as KnowledgeSourceType
+  const content = useWatch({ control, name: 'content' })
+
   const create = useMutation({
-    mutationFn: () =>
+    mutationFn: (values: AddKnowledgeValues) =>
       knowledgeRepository.createDocument({
         business_id: businessId,
-        title: title.trim(),
-        source_type: sourceType,
-        source_url: sourceType === 'url' ? url.trim() : null,
+        title: values.title,
+        source_type: values.sourceType as KnowledgeSourceType,
+        source_url: values.sourceType === 'url' ? values.url.trim() : null,
         storage_path: null,
-        content: sourceType === 'url' ? null : content.trim(),
+        content: values.sourceType === 'url' ? null : values.content.trim(),
         status: 'pendiente',
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge', businessId] })
       toast.success('Información añadida. Procésala para que tus agentes la usen.')
-      setTitle('')
-      setContent('')
-      setUrl('')
+      reset()
       onOpenChange(false)
     },
     onError: (caught) =>
-      setError(caught instanceof Error ? caught.message : 'No hemos podido guardarlo.'),
+      setError('root', {
+        message: caught instanceof Error ? caught.message : 'No hemos podido guardarlo.',
+      }),
   })
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-
-    if (title.trim().length < 2) {
-      setError('Ponle un título.')
-      return
-    }
-    if (sourceType === 'url' && !url.trim()) {
-      setError('Escribe la dirección de la página.')
-      return
-    }
-    if (FILE_SOURCE_TYPES.includes(sourceType) && content.trim().length < 10) {
-      setError('Sube un archivo con algo de texto dentro.')
-      return
-    }
-    if (sourceType !== 'url' && !FILE_SOURCE_TYPES.includes(sourceType) && content.trim().length < 10) {
-      setError('Escribe algo de contenido.')
-      return
-    }
-
-    setError(null)
-    create.mutate()
+  function onSubmit(values: AddKnowledgeValues) {
+    create.mutate(values)
   }
 
   return (
@@ -394,36 +416,40 @@ function AddKnowledgeDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="docTitle">Título</Label>
             <Input
               id="docTitle"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
               placeholder="Precios y condiciones"
               autoFocus
+              aria-invalid={Boolean(errors.title)}
+              {...register('title')}
             />
+            {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
           </div>
 
           <div className="space-y-1.5">
             <Label>Tipo</Label>
-            <Select
-              value={sourceType}
-              onValueChange={(value) => setSourceType(value as KnowledgeSourceType)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="texto">Texto escrito por mí</SelectItem>
-                <SelectItem value="faq">Preguntas frecuentes</SelectItem>
-                <SelectItem value="url">Página web</SelectItem>
-                <SelectItem value="txt">Archivo de texto (.txt)</SelectItem>
-                <SelectItem value="pdf">Archivo PDF</SelectItem>
-                <SelectItem value="docx">Documento Word (.docx)</SelectItem>
-              </SelectContent>
-            </Select>
+            <Controller
+              name="sourceType"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="texto">Texto escrito por mí</SelectItem>
+                    <SelectItem value="faq">Preguntas frecuentes</SelectItem>
+                    <SelectItem value="url">Página web</SelectItem>
+                    <SelectItem value="txt">Archivo de texto (.txt)</SelectItem>
+                    <SelectItem value="pdf">Archivo PDF</SelectItem>
+                    <SelectItem value="docx">Documento Word (.docx)</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
           {sourceType === 'url' ? (
@@ -432,13 +458,14 @@ function AddKnowledgeDialog({
               <Input
                 id="docUrl"
                 type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://tunegocio.com/precios"
+                aria-invalid={Boolean(errors.url)}
+                {...register('url')}
               />
               <p className="text-xs text-muted-foreground">
                 Leeremos el texto de esta página en cuanto pulses "Procesar".
               </p>
+              {errors.url && <p className="text-xs text-destructive">{errors.url.message}</p>}
             </div>
           ) : FILE_SOURCE_TYPES.includes(sourceType) ? (
             <div className="space-y-1.5">
@@ -452,8 +479,7 @@ function AddKnowledgeDialog({
                   const file = e.target.files?.[0]
                   if (!file) return
 
-                  setContent('')
-                  setError(null)
+                  setValue('content', '')
                   setExtracting(true)
                   try {
                     const text =
@@ -463,12 +489,14 @@ function AddKnowledgeDialog({
                           ? await extractDocxText(file)
                           : await file.text()
 
-                    setContent(text)
-                    if (!title.trim()) {
-                      setTitle(file.name.replace(/\.(txt|pdf|docx)$/i, ''))
+                    setValue('content', text, { shouldValidate: true })
+                    if (!getValues('title').trim()) {
+                      setValue('title', file.name.replace(/\.(txt|pdf|docx)$/i, ''))
                     }
                   } catch {
-                    setError('No hemos podido leer ese archivo. ¿Está dañado o protegido?')
+                    setError('content', {
+                      message: 'No hemos podido leer ese archivo. ¿Está dañado o protegido?',
+                    })
                   } finally {
                     setExtracting(false)
                   }
@@ -480,6 +508,7 @@ function AddKnowledgeDialog({
                   {content.length.toLocaleString('es-ES')} caracteres leídos.
                 </p>
               )}
+              {errors.content && <p className="text-xs text-destructive">{errors.content.message}</p>}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -487,24 +516,25 @@ function AddKnowledgeDialog({
               <Textarea
                 id="docContent"
                 rows={8}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
+                aria-invalid={Boolean(errors.content)}
                 placeholder={
                   sourceType === 'faq'
                     ? '¿Cuánto cuesta la primera visita?\nLa primera visita es gratuita e incluye estudio y presupuesto.\n\n¿Aceptáis seguros?\nSí, trabajamos con Sanitas, Adeslas y DKV.'
                     : 'Escribe aquí la información: precios, horarios, condiciones, garantías…'
                 }
+                {...register('content')}
               />
+              {errors.content && <p className="text-xs text-destructive">{errors.content.message}</p>}
             </div>
           )}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" loading={create.isPending} disabled={extracting}>
+            <Button type="submit" loading={isSubmitting || create.isPending} disabled={extracting}>
               Añadir
             </Button>
           </DialogFooter>

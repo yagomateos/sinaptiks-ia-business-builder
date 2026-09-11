@@ -5,7 +5,9 @@
  * que trae la URL (lo hace el propio cliente, antes de que este componente
  * se monte) — aquí solo queda pedir la contraseña nueva y guardarla.
  */
-import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -16,39 +18,44 @@ import { AuthLayout } from './auth-layout'
 
 const MIN_PASSWORD_LENGTH = 8
 
+const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(MIN_PASSWORD_LENGTH, `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`),
+    confirm: z.string(),
+  })
+  .refine((data) => data.password === data.confirm, {
+    message: 'Las contraseñas no coinciden.',
+    path: ['confirm'],
+  })
+
+type ResetPasswordValues = z.infer<typeof resetPasswordSchema>
+
 export function ResetPasswordPage() {
   const { updatePassword } = useAuth()
   const navigate = useNavigate()
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    setError(null)
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<ResetPasswordValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { password: '', confirm: '' },
+  })
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`)
-      return
-    }
-    if (password !== confirm) {
-      setError('Las contraseñas no coinciden.')
-      return
-    }
-
-    setSubmitting(true)
+  async function onSubmit(values: ResetPasswordValues) {
     try {
-      await updatePassword(password)
+      await updatePassword(values.password)
       toast.success('Contraseña actualizada')
       navigate('/app', { replace: true })
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'No hemos podido cambiar la contraseña.'
-      setError(message)
+      setError('root', { message })
       toast.error(message)
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -57,19 +64,18 @@ export function ResetPasswordPage() {
       title="Crea una nueva contraseña"
       subtitle="El enlace es válido una sola vez. Elige una contraseña que no uses en ningún otro sitio."
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-1.5">
           <Label htmlFor="password">Contraseña nueva</Label>
           <Input
             id="password"
             type="password"
             autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={Boolean(error)}
+            aria-invalid={Boolean(errors.password)}
+            {...register('password')}
           />
           <p className="text-xs text-muted-foreground">Mínimo {MIN_PASSWORD_LENGTH} caracteres.</p>
+          {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
 
         <div className="space-y-1.5">
@@ -78,16 +84,15 @@ export function ResetPasswordPage() {
             id="confirm"
             type="password"
             autoComplete="new-password"
-            required
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            aria-invalid={Boolean(error)}
+            aria-invalid={Boolean(errors.confirm)}
+            {...register('confirm')}
           />
+          {errors.confirm && <p className="text-xs text-destructive">{errors.confirm.message}</p>}
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
-        <Button type="submit" className="w-full" loading={submitting}>
+        <Button type="submit" className="w-full" loading={isSubmitting}>
           Guardar contraseña
         </Button>
       </form>

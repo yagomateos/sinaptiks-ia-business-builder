@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AtSign,
@@ -350,6 +353,12 @@ function IntegrationCard({
   )
 }
 
+const connectTelegramSchema = z.object({
+  botToken: z.string().trim().min(1, 'Pega el token que te da BotFather.'),
+})
+
+type ConnectTelegramValues = z.infer<typeof connectTelegramSchema>
+
 function ConnectTelegramDialog({
   open,
   onOpenChange,
@@ -360,29 +369,34 @@ function ConnectTelegramDialog({
   businessId: string
 }) {
   const queryClient = useQueryClient()
-  const [botToken, setBotToken] = useState('')
-  const [error, setError] = useState<string | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<ConnectTelegramValues>({
+    resolver: zodResolver(connectTelegramSchema),
+    defaultValues: { botToken: '' },
+  })
 
   const connect = useMutation({
-    mutationFn: () => telegramService.connect(businessId, botToken.trim()),
+    mutationFn: (values: ConnectTelegramValues) => telegramService.connect(businessId, values.botToken),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
       toast.success(`Telegram conectado — tu bot es @${result.botUsername}`)
-      setBotToken('')
+      reset()
       onOpenChange(false)
     },
     onError: (caught) =>
-      setError(caught instanceof Error ? caught.message : 'No hemos podido conectar Telegram.'),
+      setError('root', {
+        message: caught instanceof Error ? caught.message : 'No hemos podido conectar Telegram.',
+      }),
   })
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!botToken.trim()) {
-      setError('Pega el token que te da BotFather.')
-      return
-    }
-    setError(null)
-    connect.mutate()
+  function onSubmit(values: ConnectTelegramValues) {
+    connect.mutate(values)
   }
 
   return (
@@ -418,30 +432,31 @@ function ConnectTelegramDialog({
           </ol>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="botToken">Token del bot</Label>
             <Input
               id="botToken"
               type="password"
               autoComplete="off"
-              value={botToken}
-              onChange={(e) => setBotToken(e.target.value)}
               placeholder="123456789:AAExampleTokenFromBotFather"
               autoFocus
+              aria-invalid={Boolean(errors.botToken)}
+              {...register('botToken')}
             />
             <p className="text-xs text-muted-foreground">
               No se guarda en texto plano visible ni vuelve a mostrarse una vez conectado.
             </p>
+            {errors.botToken && <p className="text-xs text-destructive">{errors.botToken.message}</p>}
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {errors.root && <p className="text-sm text-destructive">{errors.root.message}</p>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" loading={connect.isPending}>
+            <Button type="submit" loading={isSubmitting || connect.isPending}>
               Conectar
             </Button>
           </DialogFooter>
