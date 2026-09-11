@@ -10,7 +10,7 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - Edge Function `google-calendar-oauth` (`/start` + `/callback`) con comprobación de pertenencia al negocio.
 - `agendar_cita` conectado en `n8n-callback` (contacto directo con fecha + email).
 - Botón real "Conectar con Google" en Canales.
-- **Pendiente por credenciales**: falta `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`. Sin ellos, `/start` devuelve `503` con mensaje claro — no simula conexión.
+- **Credenciales configuradas y conexión verificada en producción** (2026-09-11): `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` puestos como secrets; hubo que corregir dos bugs reales para completarla — la credencial de Google tenía que ser de tipo "Web application" (no "Desktop app", que solo admite `redirect_uri=http://localhost`), y el callback tiraba un 500 (`Response.redirect` con URL relativa) cuando `APP_URL` no estaba configurado. La cuenta de prueba está añadida como test user en la pantalla de consentimiento OAuth (la app sigue en modo "Testing" en Google — para que cualquier negocio pueda conectarla sin ese límite hace falta pasar la verificación de Google para el scope de Calendar).
 
 ## 2. Clasificador de intención ✅ Implementado
 
