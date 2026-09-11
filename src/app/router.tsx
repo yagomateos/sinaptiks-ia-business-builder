@@ -113,6 +113,16 @@ const NotFoundPage = lazy(
   import('@/features/misc/not-found-page').then((m) => ({ default: m.NotFoundPage })),
   ),
 )
+const PrivacyPolicyPage = lazy(
+  lazyRetry(() =>
+  import('@/features/legal/privacy-policy-page').then((m) => ({ default: m.PrivacyPolicyPage })),
+  ),
+)
+const TermsPage = lazy(
+  lazyRetry(() =>
+  import('@/features/legal/terms-page').then((m) => ({ default: m.TermsPage })),
+  ),
+)
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -161,6 +171,24 @@ export const router = createBrowserRouter([
     // mandaría a la persona a /app antes de dejarle cambiar la contraseña.
     path: '/reset-password',
     element: <ResetPasswordPage />,
+  },
+  {
+    // Públicas y sin guardas: Google (y cualquier visitante) tiene que poder
+    // abrirlas sin sesión — la exige el proceso de verificación OAuth.
+    path: '/privacidad',
+    element: (
+      <Lazy>
+        <PrivacyPolicyPage />
+      </Lazy>
+    ),
+  },
+  {
+    path: '/terminos',
+    element: (
+      <Lazy>
+        <TermsPage />
+      </Lazy>
+    ),
   },
 
   {

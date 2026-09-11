@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Wordmark } from '@/components/layout/logo'
 
 interface AuthLayoutProps {
@@ -21,6 +22,15 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
           <div className="mt-8">{children}</div>
 
           {footer && <div className="mt-6 text-sm text-muted-foreground">{footer}</div>}
+
+          <div className="mt-10 flex gap-4 text-xs text-muted-foreground">
+            <Link to="/privacidad" className="hover:text-foreground">
+              Privacidad
+            </Link>
+            <Link to="/terminos" className="hover:text-foreground">
+              Términos
+            </Link>
+          </div>
         </div>
       </div>
 
