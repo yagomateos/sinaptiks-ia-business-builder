@@ -20,7 +20,11 @@ import {
 } from '../_shared/auth.ts'
 import * as stripeClient from '../_shared/stripe-client.ts'
 
-const APP_URL = Deno.env.get('APP_URL') ?? ''
+// Stripe exige URLs absolutas para success_url/cancel_url/return_url — sin
+// `APP_URL` configurado, un valor relativo haría que Stripe rechazara la
+// creación de la sesión. El frontend de producción es un respaldo razonable,
+// no un secreto: ver la cabecera del README/CLAUDE.md.
+const APP_URL = Deno.env.get('APP_URL') || 'https://sinaptiks-ia-business-builder.vercel.app'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,

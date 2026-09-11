@@ -16,7 +16,12 @@ import { isGoogleCalendarConfigured } from '../_shared/calendar/index.ts'
 const CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
 const REDIRECT_URI = `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-calendar-oauth/callback`
-const APP_URL = Deno.env.get('APP_URL') ?? ''
+// `Response.redirect` exige una URL absoluta (lanza en vez de resolverla
+// contra el origen actual, a diferencia del navegador) — sin `APP_URL`
+// configurado, un `redirectTarget` relativo ("/") tira la función entera con
+// un 500 en vez de completar la conexión. El frontend de producción es un
+// respaldo razonable, no un secreto: ver la cabecera del README/CLAUDE.md.
+const APP_URL = Deno.env.get('APP_URL') || 'https://sinaptiks-ia-business-builder.vercel.app'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -86,7 +91,7 @@ async function handleStart(url: URL): Promise<Response> {
 async function handleCallback(url: URL): Promise<Response> {
   const code = url.searchParams.get('code')
   const businessId = url.searchParams.get('state')
-  const redirectTarget = APP_URL ? `${APP_URL}/app/canales` : '/'
+  const redirectTarget = `${APP_URL}/app/canales`
 
   if (!code || !businessId) return json({ error: 'Faltan parámetros de Google' }, 400)
 
