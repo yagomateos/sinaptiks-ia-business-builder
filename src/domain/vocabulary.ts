@@ -138,12 +138,15 @@ export const UNCONNECTED_AUTOMATION_ACTIONS = new Set<AutomationAction['type']>(
 ])
 
 /**
- * `mensaje_entrante` dispara de verdad desde `conversation-pipeline.ts` — pero
- * solo cuando no depende de clasificar la intención del mensaje (`config`
- * vacío o solo con `channels`), o cuando la intención es "escalado" (ahí la
- * señal ya la calcula `detectHandoff`, así que reutilizarla es gratis). Con
- * intención "reserva" o "faq" seguiría necesitando clasificar el mensaje, que
- * todavía no existe, así que esos siguen sin disparar solos.
+ * `mensaje_entrante` dispara de verdad desde `conversation-pipeline.ts` para
+ * cualquier intención: sin `intent` en el disparador (o solo con
+ * `channels`), en el primer mensaje de la conversación; con `intent`
+ * configurado, dispara en cualquier mensaje que el clasificador
+ * (`_shared/intent-classifier`) etiquete con esa misma intención y
+ * confianza suficiente (`INTENT_CONFIDENCE_THRESHOLD`). "escalado" es la
+ * excepción: sigue disparando desde `detectHandoff` (más fiable que la
+ * clasificación genérica), con el clasificador como respaldo solo si esas
+ * reglas no encontraron nada.
  *
  * `cambio_estado` dispara de verdad desde el trigger de Postgres
  * `notify_stage_change_automations` (migración `automation_stage_dispatch`),
@@ -172,8 +175,7 @@ export function isAutomationTriggerConnected(
   if (actions.some((a) => a.type === 'responder_ia')) return false
 
   if (trigger.type === 'mensaje_entrante') {
-    const intent = trigger.config.intent
-    return !intent || intent === 'escalado'
+    return true
   }
 
   if (trigger.type === 'cambio_estado') {

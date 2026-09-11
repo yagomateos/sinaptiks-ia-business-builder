@@ -23,13 +23,13 @@ describe('isAutomationTriggerConnected', () => {
     ).toBe(true)
   })
 
-  it('is not connected for mensaje_entrante with intent "reserva" or "faq" — no classifier yet', () => {
+  it('is connected for mensaje_entrante with intent "reserva" or "faq" — the classifier drives these now', () => {
     expect(
       isAutomationTriggerConnected({ type: 'mensaje_entrante', config: { intent: 'reserva' } }, []),
-    ).toBe(false)
+    ).toBe(true)
     expect(
       isAutomationTriggerConnected({ type: 'mensaje_entrante', config: { intent: 'faq' } }, []),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   // El pipeline ya responde directamente a cada mensaje — disparar también

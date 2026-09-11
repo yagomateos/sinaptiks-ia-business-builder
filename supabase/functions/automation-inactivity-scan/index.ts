@@ -81,7 +81,10 @@ Deno.serve(async (request) => {
     // No se puede comparar dos columnas de la misma fila en un filtro de
     // PostgREST — se trae el candidato por umbral y se descarta en JS el que
     // ya se avisó desde el último mensaje.
-    const due = ((conversations ?? []) as CandidateConversation[]).filter(
+    // El cliente sin tipos generados no puede saber que conversations→leads
+    // es de-uno-a-uno (cada conversación tiene un solo lead) e infiere el
+    // embed como array — en runtime PostgREST sí devuelve un único objeto.
+    const due = ((conversations ?? []) as unknown as CandidateConversation[]).filter(
       (c) => !c.last_inactivity_notice_at || c.last_inactivity_notice_at < c.last_message_at,
     )
 

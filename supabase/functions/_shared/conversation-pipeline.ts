@@ -19,6 +19,11 @@ import { isConfigured as isN8nConfigured, n8n } from './n8n-client.ts'
 import { webhookPathFor } from './workflow-builder.ts'
 import { isResendConfigured, sendEmail } from './resend-client.ts'
 import { appointmentRequestEmailHtml } from './email-templates.ts'
+import {
+  classifyIntent,
+  INTENT_CONFIDENCE_THRESHOLD,
+  type IntentClassification,
+} from './intent-classifier/index.ts'
 
 export interface ContactFields {
   name?: unknown
@@ -229,34 +234,73 @@ async function fireAutomation(
 }
 
 /**
+ * Pide al negocio su nombre/sector/servicios para dar contexto real al
+ * clasificador (ver claude-classifier.ts) — sin esto, "quiero reservar"
+ * significa lo mismo en una clínica que en una peluquería, pero el propio
+ * negocio sí lo distingue.
+ */
+async function classifyIncomingIntent(
+  admin: SupabaseClient,
+  businessId: string,
+  text: string,
+): Promise<IntentClassification> {
+  const [{ data: profile }, { data: services }] = await Promise.all([
+    admin.from('business_profiles').select('business_name, industry').eq('business_id', businessId).maybeSingle(),
+    admin.from('services').select('name').eq('business_id', businessId).eq('is_active', true),
+  ])
+
+  return await classifyIntent({
+    text,
+    businessName: profile?.business_name ?? 'este negocio',
+    industry: profile?.industry ?? 'otro',
+    services: (services ?? []).map((s: { name: string }) => s.name),
+  })
+}
+
+/**
  * Las automatizaciones "mensaje_entrante" sin `intent` (o solo con filtro de
  * canal) son seguras de disparar en cuanto llega el mensaje: no dependen de
- * saber cómo va a responder el agente. Las que sí tienen `intent` configurado
- * ("reserva", "faq") necesitarían clasificar la intención del mensaje —
- * todavía no implementado — así que se dejan fuera aquí a propósito; el
- * intent "escalado" es la excepción, porque `detectHandoff` ya calcula
- * exactamente esa señal más abajo, y se dispara desde ahí.
+ * saber cómo va a responder el agente — solo se hace en el primer mensaje de
+ * la conversación, para no avisar en cada mensaje de una charla larga.
  *
- * Dos exclusiones más, para no introducir un bug al conectar esto:
- * - Un paso `responder_ia` duplicaría la respuesta que este mismo pipeline ya
- *   genera de forma directa para cada mensaje — el segundo mensaje del
- *   agente quedaría huérfano en la conversación (nadie lo reenvía al canal
- *   real) y además dobla el gasto de Claude por el mismo mensaje.
- * - Sin exigir que sea el primer mensaje de la conversación, una automatización
- *   como "avisa al equipo cuando alguien contacta" avisaría en cada mensaje
- *   de una conversación larga, no solo cuando de verdad es un contacto nuevo.
+ * Las que sí tienen `intent` ("reserva", "faq"...) disparan cuando el
+ * clasificador coincide con confianza suficiente — en cualquier mensaje, no
+ * solo el primero: cada vez que el cliente expresa esa intención es una
+ * ocasión real de disparar, no solo la primera. La excepción es "escalado":
+ * sigue disparando solo desde `detectHandoff`, más abajo en
+ * `respondWithAgent` — esa señal (turnos, palabras clave del negocio, o que
+ * el propio agente ya decidió derivar) es más fiable que la clasificación
+ * genérica del mensaje, y clasificarlo aquí también duplicaría el aviso.
+ *
+ * Se excluye siempre un paso `responder_ia`: duplicaría la respuesta que
+ * este mismo pipeline ya genera de forma directa para cada mensaje — el
+ * segundo mensaje del agente quedaría huérfano en la conversación (nadie lo
+ * reenvía al canal real) y además dobla el gasto de Claude por el mismo
+ * mensaje.
  */
 async function fireImmediateIncomingMessageAutomations(
   automations: IncomingMessageAutomation[],
   channel: string,
   isNewConversation: boolean,
+  classification: IntentClassification | null,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  if (!isNewConversation) return
-
-  const candidates = automations.filter(
-    (a) => !a.trigger.config?.intent && !a.actions.some((action) => action.type === 'responder_ia'),
+  const withoutResponderIa = automations.filter(
+    (a) => !a.actions.some((action) => action.type === 'responder_ia'),
   )
+
+  const noIntentCandidates = isNewConversation
+    ? withoutResponderIa.filter((a) => !a.trigger.config?.intent)
+    : []
+
+  const intentCandidates =
+    classification &&
+    classification.intent !== 'humano' &&
+    classification.confidence >= INTENT_CONFIDENCE_THRESHOLD
+      ? withoutResponderIa.filter((a) => a.trigger.config?.intent === classification.intent)
+      : []
+
+  const candidates = [...noIntentCandidates, ...intentCandidates]
 
   await Promise.all(
     candidates
@@ -469,12 +513,12 @@ export async function respondWithAgent(
     .neq('status', 'cerrada')
     .maybeSingle()
 
-  let conversationId = existingConversation?.id as string | undefined
+  let resolvedConversationId = existingConversation?.id as string | undefined
   const handedOffAlready = existingConversation?.handled_by === 'humano'
   const handledSince = existingConversation?.handled_by_since ?? null
-  const isNewConversation = !conversationId
+  const isNewConversation = !resolvedConversationId
 
-  if (!conversationId) {
+  if (!resolvedConversationId) {
     const { data: created, error } = await admin
       .from('conversations')
       .insert({
@@ -487,12 +531,24 @@ export async function respondWithAgent(
       .single()
 
     if (error) throw new Error(`No se pudo crear la conversación: ${error.message}`)
-    conversationId = created.id
+    resolvedConversationId = created.id
   }
+
+  // TypeScript no conserva el estrechamiento de `resolvedConversationId` a
+  // través del `await` de dentro del `if` — en tiempo de ejecución, llegados
+  // aquí siempre está resuelto (o venía de la fila existente, o se acaba de
+  // crear). El cast deja esa garantía explícita en vez de repetir `!` por
+  // todo el archivo.
+  const conversationId = resolvedConversationId as string
 
   const incomingMessageAutomations = input.incomingText
     ? await fetchIncomingMessageAutomations(admin, businessId)
     : []
+
+  // Se clasifica una vez por mensaje y se reutiliza tanto para disparar
+  // automatizaciones por intent aquí como para el posible handoff a humano
+  // más abajo — evita clasificar dos veces el mismo mensaje.
+  let classification: IntentClassification | null = null
 
   if (input.incomingText) {
     await admin.from('messages').insert({
@@ -502,10 +558,13 @@ export async function respondWithAgent(
       content: input.incomingText,
     })
 
+    classification = await classifyIncomingIntent(admin, businessId, input.incomingText)
+
     await fireImmediateIncomingMessageAutomations(
       incomingMessageAutomations,
       input.channel,
       isNewConversation,
+      classification,
       {
         ...input.payload,
         businessId,
@@ -566,7 +625,7 @@ export async function respondWithAgent(
   const claudeMessages = (history ?? [])
     .filter((m: { role: string }) => m.role !== 'sistema')
     .map((m: { role: string; content: string }) => ({
-      role: (m.role === 'contacto' ? 'user' : 'assistant') as const,
+      role: m.role === 'contacto' ? ('user' as const) : ('assistant' as const),
       content: m.content,
     }))
 
@@ -713,11 +772,22 @@ export async function respondWithAgent(
     (m: { role: string; created_at: string }) =>
       m.role === 'contacto' && (!handledSince || m.created_at >= handledSince),
   ).length
-  const shouldHandOff = detectHandoff(agent.handoff_rules, {
-    incomingText: input.incomingText,
-    reply,
-    contactTurns,
-  })
+  // El clasificador es una señal más de derivar, no la única: las reglas del
+  // propio negocio (palabras clave, turnos, o que el agente ya lo dijo) son
+  // más fiables que "el mensaje parece de alguien que quiere hablar con una
+  // persona" en general — por eso solo entra como respaldo si detectHandoff
+  // no encontró nada.
+  const classifierHandoff =
+    classification && classification.intent === 'humano' && classification.confidence >= INTENT_CONFIDENCE_THRESHOLD
+      ? `El clasificador de intención detectó "humano" (confianza ${classification.confidence.toFixed(2)})`
+      : null
+
+  const shouldHandOff =
+    detectHandoff(agent.handoff_rules, {
+      incomingText: input.incomingText,
+      reply,
+      contactTurns,
+    }) ?? classifierHandoff
 
   if (shouldHandOff) {
     await Promise.all(
