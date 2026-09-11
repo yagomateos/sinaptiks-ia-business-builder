@@ -9,6 +9,8 @@ interface AuthContextValue {
   user: User | null
   profile: Profile | null
   loading: boolean
+  /** Si cargar el perfil falló (red, RLS...), para no confundirlo con "todavía cargando". */
+  profileError: unknown
   signIn(email: string, password: string): Promise<void>
   signUp(email: string, password: string, fullName: string): Promise<{ needsConfirmation: boolean }>
   signOut(): Promise<void>
@@ -22,6 +24,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [profileError, setProfileError] = useState<unknown>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -50,9 +53,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!userId) return
     let active = true
 
-    loadProfile(userId).then((next) => {
-      if (active) setProfile(next)
-    })
+    loadProfile(userId)
+      .then((next) => {
+        if (!active) return
+        setProfile(next)
+        setProfileError(null)
+      })
+      .catch((error) => {
+        if (!active) return
+        console.warn('No se pudo cargar el perfil', error)
+        setProfileError(error)
+      })
 
     return () => {
       active = false
@@ -65,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
+      profileError,
 
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -101,10 +113,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       async refreshProfile() {
         if (!userId) return
-        setProfile(await loadProfile(userId))
+        try {
+          const next = await loadProfile(userId)
+          setProfile(next)
+          setProfileError(null)
+        } catch (error) {
+          setProfileError(error)
+          throw error
+        }
       },
     }),
-    [session, profile, loading, userId],
+    [session, profile, profileError, loading, userId],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -112,10 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-  if (error) {
-    console.warn('No se pudo cargar el perfil', error)
-    return null
-  }
+  if (error) throw toAppError(error, 'No hemos podido cargar tu perfil.')
   return data as Profile | null
 }
 

@@ -67,7 +67,14 @@ export function NotificationBell() {
         <DropdownMenuSeparator className="my-0" />
 
         <div className="max-h-[360px] overflow-y-auto">
-          {notifications.length === 0 ? (
+          {query.isError ? (
+            <div className="px-3 py-6 text-center">
+              <p className="text-xs text-muted-foreground">No hemos podido cargar los avisos.</p>
+              <Button variant="ghost" size="sm" className="mt-1 h-auto p-0 text-xs" onClick={() => query.refetch()}>
+                Reintentar
+              </Button>
+            </div>
+          ) : notifications.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-muted-foreground">
               Todavía no hay avisos.
             </p>

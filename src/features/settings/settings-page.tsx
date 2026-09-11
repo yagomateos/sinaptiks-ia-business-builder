@@ -533,7 +533,9 @@ function AccountSettings() {
       return businessesRepository.updateProfile(user.id, { full_name: fullName.trim() })
     },
     onSuccess: async () => {
-      await refreshProfile()
+      // El guardado ya se completó; si falla el refetch del perfil en el
+      // contexto (red, RLS...), no es un fallo del guardado en sí.
+      await refreshProfile().catch(() => undefined)
       toast.success('Perfil actualizado')
     },
     onError: (error) =>

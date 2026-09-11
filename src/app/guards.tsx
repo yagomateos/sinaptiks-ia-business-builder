@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { useBusiness } from '@/features/businesses/business-context'
 
@@ -8,6 +9,17 @@ function FullScreenLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    </div>
+  )
+}
+
+function FullScreenError({ onRetry }: { onRetry(): void }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="text-sm text-muted-foreground">No hemos podido cargar tu perfil.</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        Reintentar
+      </Button>
     </div>
   )
 }
@@ -57,9 +69,13 @@ export function RequireOnboardedBusiness() {
 
 /** Sinaptkis staff only. */
 export function RequireSuperAdmin() {
-  const { profile, loading } = useAuth()
+  const { profile, profileError, loading, refreshProfile } = useAuth()
 
-  if (loading || !profile) return <FullScreenLoader />
+  if (loading) return <FullScreenLoader />
+  if (!profile) {
+    if (profileError) return <FullScreenError onRetry={() => void refreshProfile()} />
+    return <FullScreenLoader />
+  }
   if (profile.platform_role !== 'super_admin') return <Navigate to="/app" replace />
 
   return <Outlet />
