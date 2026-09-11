@@ -183,7 +183,6 @@ cuerpo de la petición, para que el cliente no pueda inventarse acciones.
 | Puntuar potencial del contacto | ✅ real — en cada mensaje, no solo en el simulador; mueve `potential_score`/`potential_label` en el CRM |
 | Derivar a una persona | ✅ real — por palabra clave, por turnos sin avanzar, o porque el propio agente lo decidió; marca la conversación, avisa por la campana y el agente deja de responder |
 | Telegram (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |
-| WhatsApp (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |
 | Enviar email | ✅ real (Resend) con un contacto directo o como recordatorio/reactivación programado — "pendiente de canal" solo si no hay email o Resend no está configurado |
 | Agendar cita | ✅ real (Google Calendar) con un contacto directo, fecha y calendario conectado — "pendiente de canal" en cualquier otro caso |
 
@@ -191,10 +190,16 @@ Estas últimas registran el paso sin enviar nada solo cuando de verdad falta
 algo (el proveedor sin configurar, o un "programado" sin contacto resuelto):
 es preferible dejar constancia a fingir un mensaje que nadie recibe.
 
-### Canales de mensajería: Telegram y WhatsApp
+### Canal de mensajería: Telegram, no WhatsApp
 
-**Telegram** está completamente conectado — solo falta el paso que le toca a
-cada negocio:
+El canal principal es **Telegram**, no WhatsApp. WhatsApp Business API exige
+verificación de empresa con Meta — un trámite que solo puede abrir el propio
+negocio; queda fuera del marketplace por ahora, aunque su arquitectura ya
+existe (`channels`, `whatsapp-webhook`, `n8n-callback`) y sigue siendo un
+proveedor válido en el modelo de datos, listo para cuando se retome.
+
+Telegram, en cambio, está completamente conectado — solo falta el paso que le
+toca a cada negocio:
 
 1. En **Canales**, pulsa *Conectar* en la tarjeta de Telegram
 2. Habla con [@BotFather](https://t.me/BotFather) en Telegram → `/newbot` →
@@ -206,22 +211,11 @@ del contacto, consulta lo que el negocio subió a Conocimiento, genera la
 respuesta con el agente activo que corresponda y la envía de vuelta por
 Telegram — el mismo camino, verificado, que ya usan las automatizaciones.
 
-**WhatsApp** usa el mismo camino (WhatsApp Cloud API), pero con dos requisitos
-que Telegram no tiene: un token de acceso con permiso sobre un número de
-WhatsApp Business, y ese número verificado en Meta Business Suite — un
-trámite que solo puede abrir el propio negocio, no algo que resuelva el
-código. Con ese número, la tarjeta de WhatsApp en **Canales** pide el ID del
-número y el token de acceso, los valida contra la Graph API antes de guardar
-nada, y a partir de ahí funciona igual que Telegram. Además, a nivel de
-plataforma hacen falta `WHATSAPP_VERIFY_TOKEN` y `WHATSAPP_APP_SECRET`
-(secrets de la Edge Function `whatsapp-webhook`) para que el webhook
-compartido acepte mensajes de cualquier negocio conectado.
-
-Las credenciales de ambos canales nunca se vuelven a leer después de
-guardarse: `channel_credentials` es una tabla sin política de lectura para
-nadie sujeto a RLS, solo escritura; únicamente la Edge Function del webhook
-correspondiente (con la service role) puede recuperarlas, y solo a través de
-una función de base de datos dedicada y bloqueada al resto de roles.
+El token nunca se vuelve a leer después de guardarse: `channel_credentials`
+es una tabla sin política de lectura para nadie sujeto a RLS, solo escritura;
+únicamente la Edge Function del webhook (con la service role) puede
+recuperarlo, y solo a través de una función de base de datos dedicada y
+bloqueada al resto de roles.
 
 ---
 
@@ -366,16 +360,15 @@ editor de instrucciones, base de conocimiento con chunking (texto, preguntas
 frecuentes, archivo .txt y páginas web leídas de verdad, con vista de los
 fragmentos procesados), CRM con lista y kanban, puntuación de potencial en
 cada conversación real, derivación automática a una persona, campana de
-avisos, bandeja de conversaciones, marketplace de conexiones (Telegram y
-WhatsApp conectables de verdad, Google Calendar con OAuth real y citas
-creadas en el calendario), email real vía Resend (directo y en campañas
-programadas de recordatorio/reactivación), facturación con Stripe
-(checkout, portal y webhooks) cuando hay credenciales, analíticas y panel de
-administración.
+avisos, bandeja de conversaciones, marketplace de conexiones (Telegram
+conectable de verdad, Google Calendar con OAuth real y citas creadas en el
+calendario), email real vía Resend (directo y en campañas programadas de
+recordatorio/reactivación), facturación con Stripe (checkout, portal y
+webhooks) cuando hay credenciales, analíticas y panel de administración.
 
 **Pendiente por credenciales o trámite externo, con estado honesto mientras
 tanto:** llamadas a modelos de IA sin clave configurada (motor de reglas
 determinista de respaldo), búsqueda semántica sin Qdrant/OpenAI configurados
 (cae a palabra clave sobre Postgres), Stripe sin sus claves/Price ID, y
-WhatsApp sin el número de empresa verificado en Meta (y sin
-`WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` de plataforma).
+WhatsApp — fuera del marketplace por ahora, arquitectura lista pero sin
+formulario de conexión mientras el producto se centra en Telegram.
