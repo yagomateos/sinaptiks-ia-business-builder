@@ -20,6 +20,7 @@ import {
 import { sendTelegramMessage } from '../_shared/telegram-client.ts'
 import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
 import { automationEmailHtml } from '../_shared/email-templates.ts'
+import { getCalendarProvider } from '../_shared/calendar/index.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -188,7 +189,7 @@ async function performAction(
       if (directPhone.startsWith('tg:')) {
         return await sendTelegramToOneLead(admin, businessId, directPhone, automationName)
       }
-      return await sendTelegramBroadcast(admin, businessId, trigger, automationName)
+      return await sendTelegramBroadcast(admin, businessId, trigger)
     }
 
     // enviar_email y solicitar_resena solo cubren aquí el caso en que el
@@ -217,6 +218,30 @@ async function performAction(
           : `Te escribimos sobre: ${automationName}.`,
       )
     }
+    case 'agendar_cita': {
+      // Necesita servicio + hora de inicio (fecha_hora_iso, mismo campo que
+      // ya usa la herramienta registrar_solicitud_cita en
+      // conversation-pipeline.ts) y un contacto directo. Sin calendario
+      // conectado o sin esos datos, se registra como pendiente en vez de
+      // fingir una cita que no existe en ningún calendario real.
+      const startsAtRaw = payload?.fecha_hora_iso ?? payload?.startsAt
+      const startsAt = startsAtRaw ? new Date(String(startsAtRaw)) : null
+      const email = payload?.email ? String(payload.email) : null
+
+      if (!startsAt || isNaN(startsAt.getTime()) || !email) {
+        return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
+      }
+
+      return await createCalendarAppointment(admin, businessId, body.automationId, {
+        leadId: (payload?.leadId as string | undefined) ?? null,
+        service: String(payload?.servicio ?? payload?.service ?? automationName),
+        startsAt,
+        durationMinutes: Number(actionConfig.duration_minutes ?? payload?.duration_minutes ?? 60),
+        timezone: String(actionConfig.timezone ?? 'Europe/Madrid'),
+        attendeeEmail: email,
+      })
+    }
+
     case 'crear_lead': {
       const { id, created } = await findOrCreateLead(
         admin,
@@ -317,6 +342,68 @@ async function recordPendingChannel(
   return `Paso registrado (${actionType} requiere conectar su canal)`
 }
 
+async function createCalendarAppointment(
+  admin: SupabaseClient,
+  businessId: string,
+  automationId: string,
+  input: {
+    leadId: string | null
+    service: string
+    startsAt: Date
+    durationMinutes: number
+    timezone: string
+    attendeeEmail: string
+  },
+): Promise<string> {
+  const calendar = await getCalendarProvider(admin, businessId)
+  if (!calendar) {
+    return await recordPendingChannel(businessId, automationId, input.service, 'agendar_cita')
+  }
+
+  const endsAt = new Date(input.startsAt.getTime() + input.durationMinutes * 60 * 1000)
+  const businessName = await getBusinessName(admin, businessId)
+
+  const { error: insertError, data: appointment } = await admin
+    .from('appointments')
+    .insert({
+      business_id: businessId,
+      lead_id: input.leadId,
+      automation_id: automationId,
+      service: input.service,
+      starts_at: input.startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      timezone: input.timezone,
+      status: 'pendiente',
+    })
+    .select('id')
+    .single()
+
+  if (insertError) throw new Error(`No se pudo guardar la cita: ${insertError.message}`)
+
+  try {
+    const event = await calendar.createEvent({
+      summary: `${input.service} — ${businessName}`,
+      startsAt: input.startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      timezone: input.timezone,
+      attendeeEmail: input.attendeeEmail,
+    })
+
+    await admin
+      .from('appointments')
+      .update({ status: 'confirmada', external_event_id: event.externalEventId })
+      .eq('id', appointment.id)
+
+    return `Cita creada en Google Calendar (${event.externalEventId})`
+  } catch (error) {
+    await admin
+      .from('appointments')
+      .update({ status: 'error', notes: error instanceof Error ? error.message : String(error) })
+      .eq('id', appointment.id)
+    throw error
+  }
+}
+
 async function sendAutomationEmail(
   admin: SupabaseClient,
   businessId: string,
@@ -375,7 +462,6 @@ async function sendTelegramBroadcast(
   admin: SupabaseClient,
   businessId: string,
   trigger: { type: string; config?: Record<string, unknown> },
-  automationName: string,
 ): Promise<string> {
   const botToken = await getTelegramBotToken(admin, businessId)
   if (!botToken) return 'Sin bot de Telegram conectado para este negocio'

@@ -35,6 +35,7 @@ import { CardGridSkeleton, ErrorState } from '@/components/shared/states'
 import { integrationsRepository } from '@/services/repositories/integrations.repository'
 import { telegramService } from '@/services/channels/telegram.service'
 import { isN8nLive } from '@/services/n8n'
+import { supabase } from '@/services/supabase/client'
 import {
   INTEGRATION_DESCRIPTIONS,
   INTEGRATION_LABELS,
@@ -180,6 +181,9 @@ function IntegrationCard({
   // Telegram guarda una credencial real (el token del bot) y de verdad envía
   // mensajes al conectarse — no solo apunta la intención como el resto.
   const isTelegram = provider === 'telegram'
+  // Google Calendar usa OAuth de verdad (google-calendar-oauth Edge
+  // Function) en vez del placeholder "conectando" del resto.
+  const isGoogleCalendar = provider === 'google_calendar'
   const status: IntegrationStatus = isEngine
     ? isN8nLive
       ? 'conectado'
@@ -206,6 +210,24 @@ function IntegrationCard({
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido cambiar la conexión.'),
+  })
+
+  const connectGoogleCalendar = useMutation({
+    mutationFn: async () => {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
+      if (!apiBaseUrl) throw new Error('Todavía no hay un backend conectado para gestionar canales.')
+
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (!token) throw new Error('Sesión no válida')
+
+      // Navegación real del navegador, no un fetch: Google necesita
+      // redirigir de verdad al consentimiento y volver — un XHR no puede
+      // llevar al usuario a esa pantalla.
+      window.location.href = `${apiBaseUrl}/google-calendar-oauth/start?businessId=${businessId}&token=${encodeURIComponent(token)}`
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido iniciar la conexión.'),
   })
 
   const disconnectTelegram = useMutation({
@@ -245,10 +267,13 @@ function IntegrationCard({
         {integration?.last_error && (
           <p className="mt-2 text-xs text-destructive">{integration.last_error}</p>
         )}
-        {status === 'conectando' && !isTelegram && (
+        {status === 'conectando' && !isTelegram && !isGoogleCalendar && (
           <p className="mt-2 text-xs text-muted-foreground">
             Te avisaremos en cuanto esté disponible.
           </p>
+        )}
+        {status === 'conectando' && isGoogleCalendar && (
+          <p className="mt-2 text-xs text-muted-foreground">Autorizando con Google…</p>
         )}
       </div>
 
@@ -275,6 +300,22 @@ function IntegrationCard({
             businessId={businessId}
           />
         </>
+      ) : isGoogleCalendar ? (
+        <Button
+          variant={status === 'conectado' ? 'outline' : 'default'}
+          size="sm"
+          className="mt-4 w-full"
+          loading={connectGoogleCalendar.isPending}
+          onClick={() =>
+            status === 'conectado'
+              ? integrationsRepository
+                  .setStatus(businessId, provider, 'no_conectado')
+                  .then(() => queryClient.invalidateQueries({ queryKey: ['integrations', businessId] }))
+              : connectGoogleCalendar.mutate()
+          }
+        >
+          {status === 'conectado' ? 'Desconectar' : 'Conectar con Google'}
+        </Button>
       ) : (
         <Button
           variant={status === 'conectado' ? 'outline' : 'default'}
