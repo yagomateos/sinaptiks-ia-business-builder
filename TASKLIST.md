@@ -36,7 +36,12 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - Nueva Edge Function `knowledge` (`/upsert`, `/search`, `/remove`), autenticada igual que `n8n`/`channels`.
 - **Pendiente por credenciales**: faltan `QDRANT_URL` y `OPENAI_API_KEY`. Sin ellos, `/upsert` no falla (devuelve `semantic: false`, los chunks se guardan igual en Postgres) y la búsqueda cae a palabra clave — Knowledge sigue funcionando, solo sin la parte semántica.
 
-## 5. Resincronización con n8n — pendiente
+## 5. Resincronización con n8n ✅ Implementado
+
+- Nuevas columnas en `automations`: `sync_status` (`synced|syncing|error`, `null` = nunca sincronizada), `last_synced_at`, `sync_error`, `workflow_version`.
+- `n8n/index.ts` (`createWorkflow` y `updateWorkflow`) ahora escribe ese estado real alrededor de la llamada a n8n: `syncing` antes, `synced` + `last_synced_at` + `workflow_version + 1` solo si `n8n.update()`/`n8n.create()` tuvo éxito, `error` + `sync_error` si falló — **nunca se marca sincronizado si n8n falló**, tal como se pidió.
+- `automationService.resync()` + botón "Sincronizar ahora" / "Reintentar" en la ficha de la automatización, con el estado y el error visibles en el panel "Resumen".
+- Esto es justo lo que habría detectado antes el desajuste que encontré a mano esta sesión (los workflows de "Recordar citas"/"Reactivar clientes" con `enviar_whatsapp` grabado en vez de `enviar_telegram`) — ahora el panel lo muestra en vez de quedar en silencio.
 
 ## 6. Stripe — pendiente
 

@@ -1,7 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, ChevronRight, MessageSquare, Pause, Play, Zap } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronRight,
+  MessageSquare,
+  Pause,
+  Play,
+  RefreshCw,
+  Zap,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +23,7 @@ import { automationService } from '@/services/system/automation.service'
 import { isN8nLive } from '@/services/n8n'
 import {
   AUTOMATION_CATEGORY_LABELS,
+  AUTOMATION_SYNC_STATUS_LABELS,
   isAutomationTriggerConnected,
   UNCONNECTED_AUTOMATION_ACTIONS,
 } from '@/domain/vocabulary'
@@ -74,6 +84,29 @@ export function AutomationDetailPage() {
       toast.error(error instanceof Error ? error.message : 'No hemos podido cambiar el estado.'),
   })
 
+  const resync = useMutation({
+    mutationFn: async () => {
+      if (!automation) throw new Error('Automatización no encontrada')
+      return automationService.resync(automation)
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['automation', automationId], updated)
+      queryClient.invalidateQueries({ queryKey: ['automations', businessId] })
+      if (updated.sync_status === 'error') {
+        toast.error(updated.sync_error ?? 'n8n no aceptó la definición actualizada.')
+      } else {
+        toast.success('Sincronizado con n8n')
+      }
+    },
+    onError: (error) => {
+      // El estado real (sync_status: 'error') ya lo escribió la Edge
+      // Function directamente en la base de datos — se relee para que el
+      // panel lo refleje aunque la petición en sí haya fallado.
+      queryClient.invalidateQueries({ queryKey: ['automation', automationId] })
+      toast.error(error instanceof Error ? error.message : 'No se pudo sincronizar con n8n.')
+    },
+  })
+
   const runOnce = useMutation({
     mutationFn: async () => {
       if (!automation) throw new Error('Automatización no encontrada')
@@ -117,6 +150,17 @@ export function AutomationDetailPage() {
         description={automation.description ?? undefined}
         actions={
           <>
+            {automation.n8n_workflow_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={resync.isPending}
+                onClick={() => resync.mutate()}
+              >
+                <RefreshCw />
+                {automation.sync_status === 'error' ? 'Reintentar' : 'Sincronizar ahora'}
+              </Button>
+            )}
             {/* "programado" no tiene webhook en el workflow (n8n dispara su
                 propio nodo de horario, ver buildTriggerNode) — el backend ya
                 rechaza probarlo a mano con un error claro; mejor no ofrecer
@@ -243,6 +287,27 @@ export function AutomationDetailPage() {
             <Row label="Última ejecución" value={formatRelative(automation.last_execution_at)} />
             <Separator />
             <Row label="Creada" value={formatRelative(automation.created_at)} />
+
+            {automation.n8n_workflow_id && (
+              <>
+                <Separator />
+                <Row
+                  label="Workflow en n8n"
+                  value={
+                    automation.sync_status
+                      ? `${AUTOMATION_SYNC_STATUS_LABELS[automation.sync_status]} (v${automation.workflow_version})`
+                      : 'Sin sincronizar todavía'
+                  }
+                  tone={automation.sync_status === 'error' ? 'destructive' : undefined}
+                />
+                <Row label="Última sincronización" value={formatRelative(automation.last_synced_at)} />
+                {automation.sync_status === 'error' && automation.sync_error && (
+                  <p className="rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+                    {automation.sync_error}
+                  </p>
+                )}
+              </>
+            )}
 
             {!isN8nLive && (
               <p className="rounded-md bg-secondary/60 p-3 text-xs text-muted-foreground">

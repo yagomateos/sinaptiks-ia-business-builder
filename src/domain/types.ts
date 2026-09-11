@@ -318,6 +318,11 @@ export interface Automation {
   last_execution_at: ISODate | null
   execution_count: number
   error_count: number
+  /** null: nunca se ha sincronizado (todavía sin workflow, o borrador). */
+  sync_status: 'synced' | 'syncing' | 'error' | null
+  last_synced_at: ISODate | null
+  sync_error: string | null
+  workflow_version: number
   created_at: ISODate
   updated_at: ISODate
 }

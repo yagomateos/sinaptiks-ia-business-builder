@@ -106,6 +106,13 @@ export const AUTOMATION_STATUS_LABELS: Record<AutomationStatus, string> = {
   error: 'Con errores',
 }
 
+/** `null` (nunca sincronizada) no tiene entrada — se trata aparte en la UI. */
+export const AUTOMATION_SYNC_STATUS_LABELS: Record<'synced' | 'syncing' | 'error', string> = {
+  synced: 'Sincronizada con n8n',
+  syncing: 'Sincronizando…',
+  error: 'Error al sincronizar',
+}
+
 export const AUTOMATION_CATEGORY_LABELS: Record<AutomationCategory, string> = {
   captacion: 'Captación',
   atencion: 'Atención',

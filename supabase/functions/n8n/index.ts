@@ -101,15 +101,32 @@ async function createWorkflow(ctx: AuthContext, request: Request): Promise<Respo
   if (error) throw new HttpError(500, 'No se pudo leer la automatización')
   if (!stored) throw new HttpError(404, 'Esa automatización no existe')
 
+  await ctx.db.from('automations').update({ sync_status: 'syncing' }).eq('id', stored.id)
+
   const definition = buildWorkflow(stored as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
-  const created = await n8n.create(definition)
 
-  await ctx.db
-    .from('automations')
-    .update({ n8n_workflow_id: created.id })
-    .eq('id', stored.id)
+  try {
+    const created = await n8n.create(definition)
 
-  return json(created)
+    // Nunca se marca 'synced' antes de saber que n8n aceptó la definición —
+    // si create() lanzara, el catch de abajo deja 'error' en su lugar.
+    await ctx.db
+      .from('automations')
+      .update({
+        n8n_workflow_id: created.id,
+        sync_status: 'synced',
+        last_synced_at: new Date().toISOString(),
+        sync_error: null,
+        workflow_version: 1,
+      })
+      .eq('id', stored.id)
+
+    return json(created)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error desconocido'
+    await ctx.db.from('automations').update({ sync_status: 'error', sync_error: message }).eq('id', stored.id)
+    throw error
+  }
 }
 
 async function updateWorkflow(
@@ -122,15 +139,39 @@ async function updateWorkflow(
 
   const { data: stored } = await ctx.db
     .from('automations')
-    .select('id, business_id, name, description, category, trigger, actions')
+    .select('id, business_id, name, description, category, trigger, actions, workflow_version')
     .eq('n8n_workflow_id', workflowId)
     .eq('business_id', businessId)
     .maybeSingle()
 
   if (!stored) throw new HttpError(404, 'Esa automatización no existe')
 
+  await ctx.db.from('automations').update({ sync_status: 'syncing' }).eq('id', stored.id)
+
   const definition = buildWorkflow(stored as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
-  return json(await n8n.update(workflowId, definition))
+
+  try {
+    const updated = await n8n.update(workflowId, definition)
+
+    await ctx.db
+      .from('automations')
+      .update({
+        sync_status: 'synced',
+        last_synced_at: new Date().toISOString(),
+        sync_error: null,
+        workflow_version: (stored.workflow_version ?? 0) + 1,
+      })
+      .eq('id', stored.id)
+
+    return json(updated)
+  } catch (error) {
+    // La regla que importa: si n8n.update() falla, esto NUNCA llega a
+    // 'synced' — se queda en 'error' con el motivo, y quien preguntó por el
+    // estado (el panel) lo ve tal cual es.
+    const message = error instanceof Error ? error.message : 'Error desconocido'
+    await ctx.db.from('automations').update({ sync_status: 'error', sync_error: message }).eq('id', stored.id)
+    throw error
+  }
 }
 
 async function setActive(

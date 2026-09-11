@@ -79,6 +79,28 @@ export const automationService = {
     })
   },
 
+  /**
+   * "Sincronizar ahora" / "Reintentar". Antes, nada llamaba nunca a
+   * n8nService.updateWorkflow tras la creación — un cambio en la
+   * automatización podía quedarse solo en la base de datos, con el workflow
+   * real de n8n congelado en la versión con la que se creó. El estado
+   * (`sync_status`/`sync_error`/`workflow_version`) lo escribe la propia
+   * Edge Function al hacer la llamada real — nunca se marca aquí "a mano"
+   * como sincronizado.
+   */
+  async resync(automation: Automation): Promise<Automation> {
+    if (!automation.n8n_workflow_id) {
+      const workflow = await n8nService.createWorkflow({ businessId: automation.business_id, automation })
+      return automationsRepository.update(automation.id, { n8n_workflow_id: workflow.id })
+    }
+
+    await n8nService.updateWorkflow(automation.n8n_workflow_id, {
+      businessId: automation.business_id,
+      automation,
+    })
+    return automationsRepository.getById(automation.id)
+  },
+
   async syncStatus(automation: Automation): Promise<Automation> {
     if (!automation.n8n_workflow_id) return automation
 

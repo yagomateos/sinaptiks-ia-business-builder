@@ -4,7 +4,16 @@ import type { Automation, AutomationExecution, AutomationStatus, UUID } from '@/
 
 export type AutomationDraft = Omit<
   Automation,
-  'id' | 'created_at' | 'updated_at' | 'execution_count' | 'error_count' | 'last_execution_at'
+  | 'id'
+  | 'created_at'
+  | 'updated_at'
+  | 'execution_count'
+  | 'error_count'
+  | 'last_execution_at'
+  | 'sync_status'
+  | 'last_synced_at'
+  | 'sync_error'
+  | 'workflow_version'
 >
 
 export const automationsRepository = {
