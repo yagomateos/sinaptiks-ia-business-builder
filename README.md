@@ -183,20 +183,18 @@ cuerpo de la petición, para que el cliente no pueda inventarse acciones.
 | Puntuar potencial del contacto | ✅ real — en cada mensaje, no solo en el simulador; mueve `potential_score`/`potential_label` en el CRM |
 | Derivar a una persona | ✅ real — por palabra clave, por turnos sin avanzar, o porque el propio agente lo decidió; marca la conversación, avisa por la campana y el agente deja de responder |
 | Telegram (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |
-| Email / agendar cita | registra el paso, no envía todavía |
+| WhatsApp (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |
+| Enviar email | ✅ real (Resend) con un contacto directo o como recordatorio/reactivación programado — "pendiente de canal" solo si no hay email o Resend no está configurado |
+| Agendar cita | ✅ real (Google Calendar) con un contacto directo, fecha y calendario conectado — "pendiente de canal" en cualquier otro caso |
 
-Las últimas no envían nada a propósito: sin esos canales conectados, es
-preferible dejar constancia del paso a fingir un mensaje que nadie recibe.
+Estas últimas registran el paso sin enviar nada solo cuando de verdad falta
+algo (el proveedor sin configurar, o un "programado" sin contacto resuelto):
+es preferible dejar constancia a fingir un mensaje que nadie recibe.
 
-### Canal de mensajería: Telegram, no WhatsApp
+### Canales de mensajería: Telegram y WhatsApp
 
-El canal principal es **Telegram**, no WhatsApp. WhatsApp Business API exige
-verificación de empresa con Meta — un trámite que solo puede abrir el propio
-negocio; queda fuera del marketplace por ahora, aunque sigue siendo un
-proveedor válido en el modelo de datos, listo para cuando se retome.
-
-Telegram, en cambio, está completamente conectado — solo falta el paso que le
-toca a cada negocio:
+**Telegram** está completamente conectado — solo falta el paso que le toca a
+cada negocio:
 
 1. En **Canales**, pulsa *Conectar* en la tarjeta de Telegram
 2. Habla con [@BotFather](https://t.me/BotFather) en Telegram → `/newbot` →
@@ -208,11 +206,22 @@ del contacto, consulta lo que el negocio subió a Conocimiento, genera la
 respuesta con el agente activo que corresponda y la envía de vuelta por
 Telegram — el mismo camino, verificado, que ya usan las automatizaciones.
 
-El token nunca se vuelve a leer después de guardarse: `channel_credentials`
-es una tabla sin política de lectura para nadie sujeto a RLS, solo escritura;
-únicamente la Edge Function del webhook (con la service role) puede
-recuperarlo, y solo a través de una función de base de datos dedicada y
-bloqueada al resto de roles.
+**WhatsApp** usa el mismo camino (WhatsApp Cloud API), pero con dos requisitos
+que Telegram no tiene: un token de acceso con permiso sobre un número de
+WhatsApp Business, y ese número verificado en Meta Business Suite — un
+trámite que solo puede abrir el propio negocio, no algo que resuelva el
+código. Con ese número, la tarjeta de WhatsApp en **Canales** pide el ID del
+número y el token de acceso, los valida contra la Graph API antes de guardar
+nada, y a partir de ahí funciona igual que Telegram. Además, a nivel de
+plataforma hacen falta `WHATSAPP_VERIFY_TOKEN` y `WHATSAPP_APP_SECRET`
+(secrets de la Edge Function `whatsapp-webhook`) para que el webhook
+compartido acepte mensajes de cualquier negocio conectado.
+
+Las credenciales de ambos canales nunca se vuelven a leer después de
+guardarse: `channel_credentials` es una tabla sin política de lectura para
+nadie sujeto a RLS, solo escritura; únicamente la Edge Function del webhook
+correspondiente (con la service role) puede recuperarlas, y solo a través de
+una función de base de datos dedicada y bloqueada al resto de roles.
 
 ---
 
@@ -251,11 +260,22 @@ src/
 └── app/                       Router y guardas
 
 supabase/
-├── migrations/                Esquema y RLS
-└── functions/                 Edge Functions (Deno)
-    ├── n8n/                   App → motor
-    ├── n8n-callback/          Motor → app
-    └── _shared/               Auth, cliente n8n, traductor de workflows
+├── migrations/                     Esquema y RLS
+└── functions/                      Edge Functions (Deno)
+    ├── n8n/                        App → motor (crea/actualiza workflows, dispara ejecuciones)
+    ├── n8n-callback/               Motor → app (resultado de cada acción, sin sesión)
+    ├── automation-dispatch/        Dispara automatizaciones por evento, sin duplicados
+    ├── automation-scheduled-jobs-run/  Cron: delay real entre pasos, con reintentos
+    ├── automation-inactivity-scan/     Cron: dispara el disparador "inactividad"
+    ├── channels/                   Conectar/desconectar Telegram y WhatsApp
+    ├── telegram-webhook/           Mensajes entrantes de Telegram
+    ├── whatsapp-webhook/           Mensajes entrantes de WhatsApp
+    ├── google-calendar-oauth/      OAuth y creación de citas reales
+    ├── stripe/ · stripe-webhook/   Checkout/portal y estado de suscripción real
+    ├── knowledge/                  Ingesta y búsqueda (semántica o por palabra clave)
+    ├── ai/                         Respuesta del agente (Claude/OpenAI/Ollama/reglas)
+    ├── fetch-url/                  Lee páginas web para Conocimiento
+    └── _shared/                    Auth, clientes externos, traductor de workflows
 ```
 
 ### Por qué así
@@ -339,14 +359,23 @@ npm run lint      # eslint
 
 **Funcionando:** autenticación, multi-tenancy con RLS, onboarding, perfil de
 negocio, generador de sistemas, dashboard, automatizaciones conectadas a n8n
-real (con rastro explicado paso a paso cuando fallan a mitad de camino),
-agentes IA con editor de instrucciones, base de conocimiento con chunking
-(texto, preguntas frecuentes, archivo .txt y páginas web leídas de verdad,
-con vista de los fragmentos procesados), CRM con lista y kanban, puntuación
-de potencial en cada conversación real, derivación automática a una persona,
-campana de avisos, bandeja de conversaciones, marketplace de conexiones
-(Telegram conectable de verdad), analíticas y panel de administración.
+real (con rastro explicado paso a paso cuando fallan a mitad de camino, delay
+real entre pasos y resincronización que nunca se marca correcta si n8n
+falla), clasificador de intención (heurístico + Claude), agentes IA con
+editor de instrucciones, base de conocimiento con chunking (texto, preguntas
+frecuentes, archivo .txt y páginas web leídas de verdad, con vista de los
+fragmentos procesados), CRM con lista y kanban, puntuación de potencial en
+cada conversación real, derivación automática a una persona, campana de
+avisos, bandeja de conversaciones, marketplace de conexiones (Telegram y
+WhatsApp conectables de verdad, Google Calendar con OAuth real y citas
+creadas en el calendario), email real vía Resend (directo y en campañas
+programadas de recordatorio/reactivación), facturación con Stripe
+(checkout, portal y webhooks) cuando hay credenciales, analíticas y panel de
+administración.
 
-**Simulado tras una interfaz definitiva:** llamadas a modelos de IA (funciona
-con un motor de reglas determinista), embeddings en Qdrant (búsqueda por
-palabras clave sobre Postgres), y el intercambio OAuth de cada canal.
+**Pendiente por credenciales o trámite externo, con estado honesto mientras
+tanto:** llamadas a modelos de IA sin clave configurada (motor de reglas
+determinista de respaldo), búsqueda semántica sin Qdrant/OpenAI configurados
+(cae a palabra clave sobre Postgres), Stripe sin sus claves/Price ID, y
+WhatsApp sin el número de empresa verificado en Meta (y sin
+`WHATSAPP_VERIFY_TOKEN`/`WHATSAPP_APP_SECRET` de plataforma).

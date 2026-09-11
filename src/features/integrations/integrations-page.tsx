@@ -34,6 +34,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, ErrorState } from '@/components/shared/states'
 import { integrationsRepository } from '@/services/repositories/integrations.repository'
 import { telegramService } from '@/services/channels/telegram.service'
+import { whatsappService } from '@/services/channels/whatsapp.service'
 import { isN8nLive } from '@/services/n8n'
 import { supabase } from '@/services/supabase/client'
 import {
@@ -76,6 +77,7 @@ const STATUS_VARIANTS: Record<IntegrationStatus, 'outline' | 'secondary' | 'succ
 /** Providers a business owner sets up directly. The rest are platform-level. */
 const CUSTOMER_FACING: IntegrationProvider[] = [
   'telegram',
+  'whatsapp',
   'gmail',
   'google_calendar',
   'instagram',
@@ -84,13 +86,11 @@ const CUSTOMER_FACING: IntegrationProvider[] = [
 ]
 
 /**
- * WhatsApp exige verificación de empresa con Meta — un trámite que solo puede
- * iniciar el propio negocio, no algo que se resuelva con código. Se oculta
- * del marketplace mientras tanto: mostrar una tarjeta que nadie puede
- * completar hoy no ayuda a nadie. Sigue existiendo como proveedor válido —
- * basta con quitarlo de aquí cuando se retome.
+ * Nada se oculta hoy, pero se deja el mecanismo: si algún proveedor necesita
+ * volver a esconderse del marketplace (p. ej. mientras se completa un
+ * trámite externo), basta con añadirlo aquí.
  */
-const HIDDEN_FOR_NOW: IntegrationProvider[] = ['whatsapp']
+const HIDDEN_FOR_NOW: IntegrationProvider[] = []
 
 export function IntegrationsPage() {
   const { activeBusiness } = useBusiness()
@@ -181,6 +181,10 @@ function IntegrationCard({
   // Telegram guarda una credencial real (el token del bot) y de verdad envía
   // mensajes al conectarse — no solo apunta la intención como el resto.
   const isTelegram = provider === 'telegram'
+  // WhatsApp Cloud API funciona igual que Telegram (credencial real,
+  // validada contra la API antes de guardar), pero exige `phone_number_id` +
+  // token de acceso en vez de un único bot token.
+  const isWhatsApp = provider === 'whatsapp'
   // Google Calendar usa OAuth de verdad (google-calendar-oauth Edge
   // Function) en vez del placeholder "conectando" del resto.
   const isGoogleCalendar = provider === 'google_calendar'
@@ -240,6 +244,16 @@ function IntegrationCard({
       toast.error(error instanceof Error ? error.message : 'No hemos podido desconectar Telegram.'),
   })
 
+  const disconnectWhatsApp = useMutation({
+    mutationFn: () => whatsappService.disconnect(businessId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
+      toast.success('WhatsApp desconectado')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido desconectar WhatsApp.'),
+  })
+
   return (
     <Card className="flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
@@ -257,6 +271,14 @@ function IntegrationCard({
         {isTelegram && typeof integration?.config?.bot_username === 'string' && (
           <p className="mt-2 text-[11px] text-muted-foreground">
             Conectado como @{integration.config.bot_username}
+          </p>
+        )}
+        {isWhatsApp && typeof integration?.config?.display_phone_number === 'string' && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Conectado como {integration.config.display_phone_number}
+            {typeof integration?.config?.verified_name === 'string'
+              ? ` (${integration.config.verified_name})`
+              : ''}
           </p>
         )}
         {integration?.connected_at && (
@@ -295,6 +317,23 @@ function IntegrationCard({
             {status === 'conectado' ? 'Desconectar' : 'Conectar'}
           </Button>
           <ConnectTelegramDialog
+            open={connectOpen}
+            onOpenChange={setConnectOpen}
+            businessId={businessId}
+          />
+        </>
+      ) : isWhatsApp ? (
+        <>
+          <Button
+            variant={status === 'conectado' ? 'outline' : 'default'}
+            size="sm"
+            className="mt-4 w-full"
+            loading={disconnectWhatsApp.isPending}
+            onClick={() => (status === 'conectado' ? disconnectWhatsApp.mutate() : setConnectOpen(true))}
+          >
+            {status === 'conectado' ? 'Desconectar' : 'Conectar'}
+          </Button>
+          <ConnectWhatsAppDialog
             open={connectOpen}
             onOpenChange={setConnectOpen}
             businessId={businessId}
@@ -414,6 +453,117 @@ function ConnectTelegramDialog({
               onChange={(e) => setBotToken(e.target.value)}
               placeholder="123456789:AAExampleTokenFromBotFather"
               autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              No se guarda en texto plano visible ni vuelve a mostrarse una vez conectado.
+            </p>
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={connect.isPending}>
+              Conectar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ConnectWhatsAppDialog({
+  open,
+  onOpenChange,
+  businessId,
+}: {
+  open: boolean
+  onOpenChange(open: boolean): void
+  businessId: string
+}) {
+  const queryClient = useQueryClient()
+  const [phoneNumberId, setPhoneNumberId] = useState('')
+  const [accessToken, setAccessToken] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const connect = useMutation({
+    mutationFn: () => whatsappService.connect(businessId, phoneNumberId.trim(), accessToken.trim()),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
+      toast.success(`WhatsApp conectado — ${result.displayPhoneNumber}`)
+      setPhoneNumberId('')
+      setAccessToken('')
+      onOpenChange(false)
+    },
+    onError: (caught) =>
+      setError(caught instanceof Error ? caught.message : 'No hemos podido conectar WhatsApp.'),
+  })
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!phoneNumberId.trim() || !accessToken.trim()) {
+      setError('Rellena el ID del número y el token de acceso.')
+      return
+    }
+    setError(null)
+    connect.mutate()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Conectar WhatsApp Business</DialogTitle>
+          <DialogDescription>
+            Necesitas un número de WhatsApp Business verificado en Meta Business Suite.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-lg border bg-secondary/40 p-3 text-xs leading-relaxed text-muted-foreground">
+          <p className="font-medium text-foreground">Dónde conseguirlos</p>
+          <ol className="mt-1.5 list-decimal space-y-1 pl-4">
+            <li>
+              Abre{' '}
+              <a
+                href="https://business.facebook.com/wa/manage/phone-numbers/"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                Meta Business Suite
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </li>
+            <li>Copia el ID del número de teléfono de WhatsApp Business</li>
+            <li>Genera un token de acceso con permiso sobre ese número</li>
+          </ol>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div className="space-y-1.5">
+            <Label htmlFor="phoneNumberId">ID del número de teléfono</Label>
+            <Input
+              id="phoneNumberId"
+              autoComplete="off"
+              value={phoneNumberId}
+              onChange={(e) => setPhoneNumberId(e.target.value)}
+              placeholder="123456789012345"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="accessToken">Token de acceso</Label>
+            <Input
+              id="accessToken"
+              type="password"
+              autoComplete="off"
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="EAAExampleAccessTokenFromMeta"
             />
             <p className="text-xs text-muted-foreground">
               No se guarda en texto plano visible ni vuelve a mostrarse una vez conectado.
