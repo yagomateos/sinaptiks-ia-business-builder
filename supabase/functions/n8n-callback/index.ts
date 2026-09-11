@@ -21,6 +21,7 @@ import { sendTelegramMessage } from '../_shared/telegram-client.ts'
 import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
 import { automationEmailHtml } from '../_shared/email-templates.ts'
 import { getCalendarProvider } from '../_shared/calendar/index.ts'
+import { findBroadcastCandidates, isDue } from '../_shared/automation-broadcast.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -192,31 +193,28 @@ async function performAction(
       return await sendTelegramBroadcast(admin, businessId, trigger)
     }
 
-    // enviar_email y solicitar_resena solo cubren aquí el caso en que el
-    // disparador ya trae un contacto concreto (mensaje_entrante o
-    // cambio_estado) — que es como llega el payload en todos los blueprints
-    // reales que combinan estos con esos disparadores. Un "programado" que
-    // manda un resumen o contenido genérico (no a un lead concreto)
-    // necesitaría decidir a qué destinatario del negocio va, y eso sigue sin
-    // resolver — cae al `default` de abajo, sigue como "pendiente".
+    // enviar_email y solicitar_resena: si el disparador ya trae un contacto
+    // concreto (mensaje_entrante o cambio_estado), se manda directo. Un
+    // "programado" no trae ningún contacto (el nodo de horario de n8n se
+    // dispara solo, sin saber de leads) — se busca a quién le toca según la
+    // condición del propio disparador (mismo cálculo que enviar_telegram).
     case 'enviar_email':
     case 'solicitar_resena': {
       const directEmail = String(payload?.email ?? '')
-      if (!directEmail) {
-        return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
+      if (directEmail) {
+        return await sendAutomationEmail(
+          admin,
+          businessId,
+          body.automationId,
+          actionType,
+          directEmail,
+          automationName,
+          actionType === 'solicitar_resena'
+            ? 'Nos encantaría conocer tu opinión — tu reseña nos ayuda muchísimo.'
+            : `Te escribimos sobre: ${automationName}.`,
+        )
       }
-
-      return await sendAutomationEmail(
-        admin,
-        businessId,
-        body.automationId,
-        actionType,
-        directEmail,
-        automationName,
-        actionType === 'solicitar_resena'
-          ? 'Nos encantaría conocer tu opinión — tu reseña nos ayuda muchísimo.'
-          : `Te escribimos sobre: ${automationName}.`,
-      )
+      return await sendEmailBroadcast(admin, businessId, body.automationId, actionType, trigger, automationName)
     }
     case 'agendar_cita': {
       // Necesita servicio + hora de inicio (fecha_hora_iso, mismo campo que
@@ -307,8 +305,7 @@ async function performAction(
     }
 
     default: {
-      // enviar_whatsapp, agendar_cita, y enviar_email/solicitar_resena sin
-      // contacto directo (programado): pendientes de conectar su canal.
+      // enviar_whatsapp: pendiente de conectar su canal.
       return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
     }
   }
@@ -317,9 +314,9 @@ async function performAction(
 const ACTION_DESCRIPTIONS: Record<string, string> = {
   enviar_whatsapp: 'mensaje de WhatsApp pendiente de enviar',
   agendar_cita: 'cita pendiente de agendar',
-  // Solo se usan cuando de verdad no se pudo enviar (Resend sin configurar,
-  // o el disparador no trae un contacto directo) — con Resend activo y un
-  // contacto concreto, enviar_email/solicitar_resena sí salen de verdad.
+  // Solo se usan cuando de verdad no se pudo enviar (Resend sin configurar):
+  // con Resend activo, enviar_email/solicitar_resena sí salen de verdad,
+  // sea a un contacto directo o por difusión (programado).
   enviar_email: 'email pendiente de enviar',
   solicitar_resena: 'solicitud de reseña pendiente',
 }
@@ -451,12 +448,11 @@ async function sendTelegramToOneLead(
 
 /**
  * "programado" no trae ningún contacto — el nodo de horario de n8n se
- * dispara solo, sin saber de leads (ver workflow-builder.ts). Aquí se busca
- * a quién le toca según la condición del propio disparador:
- * - `offset_hours` (p. ej. -24): leads con cita para ese día concreto.
- * - `inactive_days`: leads sin contacto desde hace ese tiempo.
- * `last_reminder_sent_at` evita mandar el mismo aviso dos veces por la misma
- * cita o el mismo periodo de inactividad.
+ * dispara solo, sin saber de leads (ver workflow-builder.ts).
+ * `findBroadcastCandidates` decide a quién le toca según la condición del
+ * propio disparador (offset_hours / inactive_days); aquí solo queda filtrar
+ * por canal (tiene `tg:<chat_id>` en `phone`) y descartar a quien ya se avisó
+ * (`isDue`, compara con `last_reminder_sent_at`).
  */
 async function sendTelegramBroadcast(
   admin: SupabaseClient,
@@ -466,56 +462,19 @@ async function sendTelegramBroadcast(
   const botToken = await getTelegramBotToken(admin, businessId)
   if (!botToken) return 'Sin bot de Telegram conectado para este negocio'
 
-  const businessName = await getBusinessName(admin, businessId)
-  const offsetHours = trigger.config?.offset_hours
-  const inactiveDays = trigger.config?.inactive_days
-
-  let candidates: { id: string; full_name: string; phone: string | null; last_reminder_sent_at: string | null; reference: string }[] = []
-  let message: (nombre: string) => string
-
-  if (typeof offsetHours === 'number') {
-    const hoursAhead = Math.abs(offsetHours)
-    const target = new Date(Date.now() + hoursAhead * 60 * 60 * 1000)
-    const dayStart = new Date(target)
-    dayStart.setUTCHours(0, 0, 0, 0)
-    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
-
-    const { data } = await admin
-      .from('leads')
-      .select('id, full_name, phone, last_reminder_sent_at, next_action_at')
-      .eq('business_id', businessId)
-      .eq('stage', 'cita')
-      .not('next_action_at', 'is', null)
-      .gte('next_action_at', dayStart.toISOString())
-      .lt('next_action_at', dayEnd.toISOString())
-
-    candidates = (data ?? []).map((l) => ({ ...l, reference: l.next_action_at as string }))
-    message = (nombre) => `Hola ${nombre}, te recordamos tu cita mañana en ${businessName}. ¡Te esperamos!`
-  } else if (typeof inactiveDays === 'number') {
-    const threshold = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000).toISOString()
-
-    const { data } = await admin
-      .from('leads')
-      .select('id, full_name, phone, last_reminder_sent_at, last_contacted_at')
-      .eq('business_id', businessId)
-      .lt('last_contacted_at', threshold)
-
-    candidates = (data ?? []).map((l) => ({ ...l, reference: l.last_contacted_at as string }))
-    message = (nombre) =>
-      `Hola ${nombre}, hace tiempo que no sabemos de ti en ${businessName}. ¿Te interesa alguna novedad?`
-  } else {
+  const candidates = await findBroadcastCandidates(admin, businessId, trigger)
+  if (candidates.length === 0 && !trigger.config?.offset_hours && !trigger.config?.inactive_days) {
     return 'Este disparador "programado" no trae una condición reconocida (offset_hours / inactive_days)'
   }
 
-  // No se puede comparar dos columnas de la misma fila en un filtro de
-  // PostgREST — se trae el candidato por la condición principal y se
-  // descarta en JS el que ya se avisó desde la última referencia (la cita o
-  // el último contacto).
-  const due = candidates.filter(
-    (l) =>
-      l.phone?.startsWith('tg:') &&
-      (!l.last_reminder_sent_at || l.last_reminder_sent_at < l.reference),
-  )
+  const businessName = await getBusinessName(admin, businessId)
+  const isReminder = typeof trigger.config?.offset_hours === 'number'
+  const message = (nombre: string) =>
+    isReminder
+      ? `Hola ${nombre}, te recordamos tu cita mañana en ${businessName}. ¡Te esperamos!`
+      : `Hola ${nombre}, hace tiempo que no sabemos de ti en ${businessName}. ¿Te interesa alguna novedad?`
+
+  const due = candidates.filter((l) => l.phone?.startsWith('tg:') && isDue(l))
 
   let sent = 0
   for (const lead of due) {
@@ -532,6 +491,70 @@ async function sendTelegramBroadcast(
   }
 
   return `${sent} de ${due.length} recordatorio(s) enviados`
+}
+
+/**
+ * Mismo cálculo de destinatarios que `sendTelegramBroadcast`
+ * (`findBroadcastCandidates`), pero por email: filtra por quien tiene
+ * `email` en vez de `phone` con prefijo `tg:`, y usa Resend en vez del bot de
+ * Telegram. `solicitar_resena` solo tiene sentido con `inactive_days`
+ * (pedir reseña a quien no ha vuelto), pero no se fuerza aquí — si alguien
+ * configura `solicitar_resena` con `offset_hours`, se manda el texto de
+ * recordatorio de cita en vez de fallar en silencio.
+ */
+async function sendEmailBroadcast(
+  admin: SupabaseClient,
+  businessId: string,
+  automationId: string,
+  actionType: string,
+  trigger: { type: string; config?: Record<string, unknown> },
+  automationName: string,
+): Promise<string> {
+  if (!isResendConfigured) {
+    return await recordPendingChannel(businessId, automationId, automationName, actionType)
+  }
+
+  const candidates = await findBroadcastCandidates(admin, businessId, trigger)
+  if (candidates.length === 0 && !trigger.config?.offset_hours && !trigger.config?.inactive_days) {
+    // "resumen_diario" / "campana_marketing" del catálogo disparan
+    // "programado" con solo `cron`, sin condición de destinatario — n8n los
+    // dispara solo, pero decidir a quién le toca (¿toda la cartera? ¿el
+    // dueño del negocio?) es una funcionalidad distinta de "recordatorio de
+    // cita" / "reactivación", que sí resuelve `findBroadcastCandidates`.
+    // Queda honesto como pendiente en el panel en vez de silencioso.
+    return await recordPendingChannel(businessId, automationId, automationName, actionType)
+  }
+
+  const businessName = await getBusinessName(admin, businessId)
+  const isReminder = typeof trigger.config?.offset_hours === 'number'
+  const bodyText = (nombre: string) =>
+    isReminder
+      ? `Hola ${nombre}, te recordamos tu cita mañana en ${businessName}. ¡Te esperamos!`
+      : actionType === 'solicitar_resena'
+        ? `Hola ${nombre}, hace tiempo que no sabemos de ti en ${businessName}. Nos encantaría conocer tu opinión — tu reseña nos ayuda muchísimo.`
+        : `Hola ${nombre}, hace tiempo que no sabemos de ti en ${businessName}. ¿Te interesa alguna novedad?`
+
+  const due = candidates.filter((l) => l.email && isDue(l))
+
+  let sent = 0
+  for (const lead of due) {
+    try {
+      await sendEmail({
+        to: lead.email!,
+        subject: automationName,
+        html: automationEmailHtml({ businessName, heading: automationName, bodyText: bodyText(lead.full_name) }),
+      })
+      await admin
+        .from('leads')
+        .update({ last_reminder_sent_at: new Date().toISOString() })
+        .eq('id', lead.id)
+      sent++
+    } catch (error) {
+      console.error(`No se pudo enviar el email de difusión a ${lead.id}`, error)
+    }
+  }
+
+  return `${sent} de ${due.length} email(s) enviados`
 }
 
 async function getTelegramBotToken(

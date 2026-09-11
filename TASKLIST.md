@@ -52,7 +52,12 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - Pestaña "Facturación" en Ajustes: plan actual, botón "Gestionar facturación" (portal) y elegir plan (checkout) — si Stripe no está configurado, el error real llega hasta el usuario en vez de fingir que funcionó.
 - **Pendiente por credenciales**: faltan `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, y los Price ID (`STRIPE_PRICE_STARTER/GROWTH/SCALE`) — estos últimos no pueden existir hasta crear los productos en una cuenta real de Stripe.
 
-## 7. Email programado (campañas) — pendiente
+## 7. Email programado (campañas) ✅ Implementado
+
+- `_shared/automation-broadcast.ts` extrae el cálculo de destinatarios de un disparador "programado" (`offset_hours`: leads con cita ese día; `inactive_days`: leads sin contacto desde hace ese tiempo) — antes solo lo usaba Telegram, ahora es compartido.
+- `sendTelegramBroadcast` se refactoriza para usarlo (mismo comportamiento, sin la lógica duplicada); nuevo `sendEmailBroadcast` lo reutiliza para `enviar_email`/`solicitar_resena` sin contacto directo — hasta ahora un "programado" con esas acciones caía siempre en "pendiente de canal", tuviera Resend configurado o no.
+- Reutiliza Resend (`sendAutomationEmail`) y `last_reminder_sent_at` para no avisar dos veces por la misma cita o el mismo periodo de inactividad — igual que Telegram, así que un negocio con el mismo lead en dos automatizaciones (una por Telegram, otra por email) para la misma condición comparte el marcador de "ya avisado": es una limitación conocida del diseño ya existente para Telegram, no algo nuevo de este punto.
+- Los blueprints del catálogo "Resumen diario" y "Mantener el contacto" (`programado` con solo `cron`, sin `offset_hours`/`inactive_days`) no tienen aquí una condición de destinatario reconocible — decidir a quién le toca (¿toda la cartera? ¿el dueño del negocio?) es una funcionalidad distinta a "recordatorio"/"reactivación"; siguen registrándose como pendientes en la actividad del negocio en vez de fingir un envío.
 
 ## 8. WhatsApp (arquitectura, sin activar) — pendiente
 
