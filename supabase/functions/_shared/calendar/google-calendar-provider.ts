@@ -104,17 +104,22 @@ export class GoogleCalendarProvider implements CalendarProvider {
       .map((b) => ({ start: new Date(b.start).getTime(), end: new Date(b.end).getTime() }))
       .sort((a, b) => a.start - b.start)
 
+    // Un hueco libre largo ofrece varias franjas seguidas (cada una dura
+    // `durationMinutes`), no solo la primera — para que haya entre qué elegir
+    // en vez de una única hora posible en todo el día.
     const slots: TimeSlot[] = []
     let cursor = workStart.getTime()
 
     for (const range of busyRanges) {
-      if (range.start - cursor >= durationMs) {
+      while (range.start - cursor >= durationMs) {
         slots.push({ start: new Date(cursor).toISOString(), end: new Date(cursor + durationMs).toISOString() })
+        cursor += durationMs
       }
       cursor = Math.max(cursor, range.end)
     }
-    if (workEnd.getTime() - cursor >= durationMs) {
+    while (workEnd.getTime() - cursor >= durationMs) {
       slots.push({ start: new Date(cursor).toISOString(), end: new Date(cursor + durationMs).toISOString() })
+      cursor += durationMs
     }
 
     return slots

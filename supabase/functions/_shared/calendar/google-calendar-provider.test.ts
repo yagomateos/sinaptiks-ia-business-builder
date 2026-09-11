@@ -63,10 +63,12 @@ Deno.test('listAvailability: devuelve huecos libres alrededor de un tramo ocupad
     const provider = new GoogleCalendarProvider(validCredential(), async () => {})
     const slots = await provider.listAvailability({ date: '2026-03-02', durationMinutes: 60 })
 
-    // El primer hueco de 60 minutos antes del ocupado empieza a las 9:00 (inicio de jornada).
+    // Antes del ocupado: solo cabe una franja de 60 min (9:00-10:00). Después
+    // (11:00 en adelante): franjas seguidas hasta las 19:00. 1 + 9 = 10.
+    assertEquals(slots.length, 10)
     assertEquals(slots[0], { start: '2026-03-02T09:00:00.000Z', end: '2026-03-02T10:00:00.000Z' })
-    // Justo después del ocupado, otro hueco a las 11:00.
-    assertEquals(slots.some((s) => s.start === '2026-03-02T11:00:00.000Z'), true)
+    assertEquals(slots[1], { start: '2026-03-02T11:00:00.000Z', end: '2026-03-02T12:00:00.000Z' })
+    assertEquals(slots.at(-1), { start: '2026-03-02T19:00:00.000Z', end: '2026-03-02T20:00:00.000Z' })
     // Ningún hueco puede solapar el tramo ocupado (10:00-11:00).
     for (const slot of slots) {
       assertEquals(slot.start === '2026-03-02T10:00:00.000Z', false)
@@ -76,11 +78,7 @@ Deno.test('listAvailability: devuelve huecos libres alrededor de un tramo ocupad
   }
 })
 
-Deno.test('listAvailability: sin ningún evento, ofrece un hueco al inicio de la jornada laboral (9:00)', async () => {
-  // El algoritmo ofrece UN hueco por tramo libre continuo (el que empieza
-  // justo tras el último ocupado, o el inicio de jornada si no hay
-  // ninguno) — no enumera cada hora posible dentro de un tramo libre largo.
-  // Documentado aquí porque no es obvio leyendo solo la firma del método.
+Deno.test('listAvailability: sin ningún evento, ofrece una franja por cada hora de la jornada laboral (9:00-20:00)', async () => {
   mockFetch(() =>
     new Response(JSON.stringify({ calendars: { primary: { busy: [] } } }), { status: 200 }),
   )
@@ -89,7 +87,30 @@ Deno.test('listAvailability: sin ningún evento, ofrece un hueco al inicio de la
     const provider = new GoogleCalendarProvider(validCredential(), async () => {})
     const slots = await provider.listAvailability({ date: '2026-03-02', durationMinutes: 60 })
 
-    assertEquals(slots, [{ start: '2026-03-02T09:00:00.000Z', end: '2026-03-02T10:00:00.000Z' }])
+    // 9:00, 10:00, ..., 19:00 — franjas seguidas de 60 min, no solo la primera.
+    assertEquals(slots.length, 11)
+    assertEquals(slots[0], { start: '2026-03-02T09:00:00.000Z', end: '2026-03-02T10:00:00.000Z' })
+    assertEquals(slots.at(-1), { start: '2026-03-02T19:00:00.000Z', end: '2026-03-02T20:00:00.000Z' })
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('listAvailability: un hueco largo ofrece varias franjas seguidas, no solapadas', async () => {
+  mockFetch(() =>
+    new Response(JSON.stringify({ calendars: { primary: { busy: [] } } }), { status: 200 }),
+  )
+
+  try {
+    const provider = new GoogleCalendarProvider(validCredential(), async () => {})
+    const slots = await provider.listAvailability({ date: '2026-03-02', durationMinutes: 30 })
+
+    // 22 franjas de 30 min entre las 9:00 y las 20:00.
+    assertEquals(slots.length, 22)
+    // Cada franja empieza exactamente donde termina la anterior — sin huecos ni solapes.
+    for (let i = 1; i < slots.length; i++) {
+      assertEquals(slots[i].start, slots[i - 1].end)
+    }
   } finally {
     restoreFetch()
   }
