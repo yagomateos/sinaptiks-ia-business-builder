@@ -433,7 +433,8 @@ verify_jwt = false
 [functions.ai]
 verify_jwt = true
 
-# Conectar/desconectar canales (Telegram). La llama una persona con sesión.
+# Conectar/desconectar canales (Telegram, WhatsApp). La llama una persona con
+# sesión.
 [functions.channels]
 verify_jwt = true
 
@@ -441,6 +442,13 @@ verify_jwt = true
 # autentica con el secreto de la URL más el secret_token que Telegram firma
 # en la cabecera (ver telegram-webhook/index.ts).
 [functions.telegram-webhook]
+verify_jwt = false
+
+# Meta llama aquí directamente — no hay sesión de usuario posible. La
+# verificación inicial (GET) comprueba WHATSAPP_VERIFY_TOKEN; cada mensaje
+# (POST) se autentica con la firma X-Hub-Signature-256 (ver
+# whatsapp-webhook/index.ts).
+[functions.whatsapp-webhook]
 verify_jwt = false
 
 # Descarga el texto de una URL para el Conocimiento. La llama una persona con

@@ -59,7 +59,14 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - Reutiliza Resend (`sendAutomationEmail`) y `last_reminder_sent_at` para no avisar dos veces por la misma cita o el mismo periodo de inactividad — igual que Telegram, así que un negocio con el mismo lead en dos automatizaciones (una por Telegram, otra por email) para la misma condición comparte el marcador de "ya avisado": es una limitación conocida del diseño ya existente para Telegram, no algo nuevo de este punto.
 - Los blueprints del catálogo "Resumen diario" y "Mantener el contacto" (`programado` con solo `cron`, sin `offset_hours`/`inactive_days`) no tienen aquí una condición de destinatario reconocible — decidir a quién le toca (¿toda la cartera? ¿el dueño del negocio?) es una funcionalidad distinta a "recordatorio"/"reactivación"; siguen registrándose como pendientes en la actividad del negocio en vez de fingir un envío.
 
-## 8. WhatsApp (arquitectura, sin activar) — pendiente
+## 8. WhatsApp (arquitectura, sin activar) ✅ Implementado
+
+- `_shared/whatsapp-client.ts`: cliente mínimo de WhatsApp Cloud API — `sendWhatsAppMessage`, `getWhatsAppPhoneInfo` (para validar credenciales al conectar) y `verifyWhatsAppSignature` (HMAC-SHA256 vía Web Crypto, mismo patrón que `verifyStripeSignature`).
+- A diferencia de Telegram (un webhook por bot), WhatsApp Cloud API usa una única URL compartida por todos los negocios: `find_business_by_whatsapp_phone_number_id` (nueva función de base de datos, solo accesible a la service role) resuelve el `phone_number_id` del propio payload al negocio dueño — mismo patrón de aislamiento que `find_business_by_telegram_secret`.
+- Edge Function `whatsapp-webhook`: doble verificación real, una por dirección — el handshake `GET` contra `WHATSAPP_VERIFY_TOKEN`, y cada mensaje `POST` contra la firma `X-Hub-Signature-256` con `WHATSAPP_APP_SECRET`. Sin alguno de los dos configurado, responde `503`/`401` en vez de fingir que procesó el mensaje.
+- `channels` gana `connect-whatsapp`/`disconnect-whatsapp`: valida `phone_number_id` + token de acceso llamando de verdad a la Graph API antes de guardar nada (igual que `connect-telegram` con `getMe`).
+- `n8n-callback` conecta `enviar_whatsapp` para contacto directo (`wa:<numero>`, resuelto igual que `tg:<chat_id>`) — antes caía siempre en "pendiente de canal".
+- **Deliberadamente sin activar**: sigue oculto del marketplace (`HIDDEN_FOR_NOW` en `integrations-page.tsx`) porque conectar de verdad exige verificación de empresa con Meta, un trámite que ningún cambio de código puede completar. La arquitectura ya funciona en cuanto un negocio tenga sus credenciales de Meta (`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, y por negocio: `phone_number_id` + token de acceso vía `connect-whatsapp`) — falta el formulario de conexión en el marketplace y quitarlo de `HIDDEN_FOR_NOW`, que es justamente lo que no se puede probar de verdad sin esas credenciales.
 
 ---
 

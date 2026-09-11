@@ -18,6 +18,7 @@ import {
   respondWithAgent,
 } from '../_shared/conversation-pipeline.ts'
 import { sendTelegramMessage } from '../_shared/telegram-client.ts'
+import { sendWhatsAppMessage } from '../_shared/whatsapp-client.ts'
 import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
 import { automationEmailHtml } from '../_shared/email-templates.ts'
 import { getCalendarProvider } from '../_shared/calendar/index.ts'
@@ -193,6 +194,19 @@ async function performAction(
       return await sendTelegramBroadcast(admin, businessId, trigger)
     }
 
+    case 'enviar_whatsapp': {
+      // Mismo reparto que enviar_telegram: un contacto directo trae `wa:` en
+      // el teléfono (ver whatsapp-webhook.ts). Sin WhatsApp conectado para
+      // este negocio, o sin un contacto directo (programado — sin un
+      // blueprint real hoy que lo combine, no hay una difusión que resolver
+      // todavía), se registra como pendiente.
+      const directPhone = String(payload?.phone ?? payload?.telefono ?? '')
+      if (directPhone.startsWith('wa:')) {
+        return await sendWhatsAppToOneLead(admin, businessId, directPhone, automationName)
+      }
+      return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
+    }
+
     // enviar_email y solicitar_resena: si el disparador ya trae un contacto
     // concreto (mensaje_entrante o cambio_estado), se manda directo. Un
     // "programado" no trae ningún contacto (el nodo de horario de n8n se
@@ -305,7 +319,6 @@ async function performAction(
     }
 
     default: {
-      // enviar_whatsapp: pendiente de conectar su canal.
       return await recordPendingChannel(businessId, body.automationId, automationName, actionType)
     }
   }
@@ -446,6 +459,28 @@ async function sendTelegramToOneLead(
   return 'Mensaje de Telegram enviado'
 }
 
+/** Envía a un contacto concreto (payload trae su phone `wa:<numero>`). */
+async function sendWhatsAppToOneLead(
+  admin: SupabaseClient,
+  businessId: string,
+  phone: string,
+  automationName: string,
+): Promise<string> {
+  const credential = await getWhatsAppCredential(admin, businessId)
+  if (!credential) return 'Sin WhatsApp conectado para este negocio'
+
+  const to = phone.slice('wa:'.length)
+  const businessName = await getBusinessName(admin, businessId)
+
+  await sendWhatsAppMessage(
+    credential.accessToken,
+    credential.phoneNumberId,
+    to,
+    `Hola, te escribimos de ${businessName}: ${automationName}.`,
+  )
+  return 'Mensaje de WhatsApp enviado'
+}
+
 /**
  * "programado" no trae ningún contacto — el nodo de horario de n8n se
  * dispara solo, sin saber de leads (ver workflow-builder.ts).
@@ -569,6 +604,23 @@ async function getTelegramBotToken(
     .maybeSingle()
 
   return (data?.credential as { bot_token?: string } | null)?.bot_token ?? null
+}
+
+async function getWhatsAppCredential(
+  admin: SupabaseClient,
+  businessId: string,
+): Promise<{ accessToken: string; phoneNumberId: string } | null> {
+  const { data } = await admin
+    .from('channel_credentials')
+    .select('credential')
+    .eq('business_id', businessId)
+    .eq('provider', 'whatsapp')
+    .maybeSingle()
+
+  const credential = data?.credential as { access_token?: string; phone_number_id?: string } | null
+  if (!credential?.access_token || !credential?.phone_number_id) return null
+
+  return { accessToken: credential.access_token, phoneNumberId: credential.phone_number_id }
 }
 
 async function getBusinessName(admin: SupabaseClient, businessId: string): Promise<string> {
