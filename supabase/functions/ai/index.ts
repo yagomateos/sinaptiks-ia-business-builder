@@ -23,7 +23,7 @@ import {
 } from '../_shared/auth.ts'
 import { complete, completeJson, userPrompt, type ClaudeMessage } from '../_shared/anthropic-client.ts'
 import { AGENT_TYPE_INFO, describeBusiness } from '../_shared/business-context.ts'
-import { searchKnowledge } from '../_shared/conversation-pipeline.ts'
+import { searchKnowledge } from '../_shared/knowledge-search.ts'
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {

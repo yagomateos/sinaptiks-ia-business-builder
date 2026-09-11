@@ -19,6 +19,7 @@ import { isConfigured as isN8nConfigured, n8n } from './n8n-client.ts'
 import { webhookPathFor } from './workflow-builder.ts'
 import { isResendConfigured, sendEmail } from './resend-client.ts'
 import { appointmentRequestEmailHtml } from './email-templates.ts'
+import { searchKnowledge } from './knowledge-search.ts'
 import {
   classifyIntent,
   INTENT_CONFIDENCE_THRESHOLD,
@@ -87,44 +88,6 @@ export async function findOrCreateLead(
   return { id: data.id, created: true }
 }
 
-/**
- * Búsqueda por palabras clave sobre los documentos que el negocio ha subido y
- * procesado en "Conocimiento". Respaldo mientras no haya una base vectorial
- * real (Qdrant) — coincidencia de texto, no semántica, pero real: mejor esto
- * que un agente que nunca lea lo que el negocio le dio.
- */
-export async function searchKnowledge(
-  admin: SupabaseClient,
-  businessId: string,
-  query: string,
-): Promise<string | null> {
-  const terms = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length > 3)
-
-  if (terms.length === 0) return null
-
-  const { data } = await admin
-    .from('knowledge_chunks')
-    .select('content')
-    .eq('business_id', businessId)
-    .or(terms.map((t) => `content.ilike.%${t}%`).join(','))
-    .limit(12)
-
-  if (!data || data.length === 0) return null
-
-  const ranked = data
-    .map((row: { content: string }) => {
-      const content = row.content.toLowerCase()
-      const hits = terms.filter((t) => content.includes(t)).length
-      return { content: row.content, score: hits / terms.length }
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-
-  return ranked.map((r) => r.content).join('\n\n')
-}
 
 /**
  * Puntúa al contacto con el mismo motor que usa el simulador y guarda el

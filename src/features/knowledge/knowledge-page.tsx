@@ -188,7 +188,13 @@ function DocumentCard({
   })
 
   const remove = useMutation({
-    mutationFn: () => knowledgeRepository.removeDocument(document.id),
+    mutationFn: async () => {
+      await knowledgeRepository.removeDocument(document.id)
+      // Best-effort: el cascade delete de Postgres ya se encargó de lo
+      // importante (knowledge_chunks), esto solo limpia el vector store
+      // remoto para no dejar puntos huérfanos en Qdrant.
+      await vectorStore.removeDocument(businessId, document.id).catch(() => undefined)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge', businessId] })
       toast.success('Eliminado')
