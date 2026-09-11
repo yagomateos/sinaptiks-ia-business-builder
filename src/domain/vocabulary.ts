@@ -15,6 +15,8 @@ import type {
   IntegrationStatus,
   LeadStage,
   LeadTemperature,
+  PlanKey,
+  SubscriptionStatus,
 } from './types'
 
 export const INDUSTRY_LABELS: Record<Industry, string> = {
@@ -96,6 +98,19 @@ export const LEAD_TEMPERATURE_LABELS: Record<LeadTemperature, string> = {
   frio: 'Frío',
   templado: 'Templado',
   caliente: 'Caliente',
+}
+
+export const PLAN_LABELS: Record<PlanKey, string> = {
+  starter: 'Starter',
+  growth: 'Growth',
+  scale: 'Scale',
+}
+
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  trial: 'Periodo de prueba',
+  activa: 'Activa',
+  morosa: 'Pago pendiente',
+  cancelada: 'Cancelada',
 }
 
 export const AUTOMATION_STATUS_LABELS: Record<AutomationStatus, string> = {

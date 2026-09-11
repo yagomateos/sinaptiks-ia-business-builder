@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Plus, Trash2, UserRound, Users } from 'lucide-react'
+import { Building2, CreditCard, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,13 +20,22 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ErrorState, LoadingState } from '@/components/shared/states'
 import { businessesRepository } from '@/services/repositories/businesses.repository'
 import { businessProfileRepository } from '@/services/repositories/business-profile.repository'
-import { BRAND_VOICE_LABELS, GOAL_LABELS, INDUSTRY_LABELS } from '@/domain/vocabulary'
+import { subscriptionsRepository } from '@/services/repositories/subscriptions.repository'
+import { stripeService } from '@/services/billing/stripe.service'
+import {
+  BRAND_VOICE_LABELS,
+  GOAL_LABELS,
+  INDUSTRY_LABELS,
+  PLAN_LABELS,
+  SUBSCRIPTION_STATUS_LABELS,
+} from '@/domain/vocabulary'
 import {
   BRAND_VOICES,
   INDUSTRIES,
   type BrandVoice,
   type Industry,
   type MemberRole,
+  type PlanKey,
   type Service,
 } from '@/domain/types'
 import { useAuth } from '@/features/auth/auth-context'
@@ -66,6 +75,10 @@ export function SettingsPage() {
             <UserRound />
             Mi cuenta
           </TabsTrigger>
+          <TabsTrigger value="facturacion">
+            <CreditCard />
+            Facturación
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="negocio">
@@ -79,6 +92,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="cuenta">
           <AccountSettings />
+        </TabsContent>
+        <TabsContent value="facturacion">
+          <BillingSettings businessId={businessId} canManage={canManage} />
         </TabsContent>
       </Tabs>
     </div>
@@ -624,6 +640,99 @@ function ChangePasswordCard() {
         >
           Actualizar contraseña
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+
+const PLAN_ORDER: PlanKey[] = ['starter', 'growth', 'scale']
+
+function BillingSettings({ businessId, canManage }: { businessId: string; canManage: boolean }) {
+  const query = useQuery({
+    queryKey: ['subscription', businessId],
+    queryFn: () => subscriptionsRepository.getByBusiness(businessId),
+    enabled: Boolean(businessId),
+  })
+
+  const checkout = useMutation({
+    mutationFn: (plan: PlanKey) => stripeService.goToCheckout(businessId, plan),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido abrir el checkout.'),
+  })
+
+  const portal = useMutation({
+    mutationFn: () => stripeService.goToBillingPortal(businessId),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido abrir el portal.'),
+  })
+
+  if (query.isLoading) return <LoadingState />
+  if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
+
+  const subscription = query.data
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Plan y facturación</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {subscription ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border p-4">
+            <div className="flex-1">
+              <p className="text-sm font-semibold">{PLAN_LABELS[subscription.plan]}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {SUBSCRIPTION_STATUS_LABELS[subscription.status]}
+                {subscription.current_period_end &&
+                  ` · Renueva ${new Date(subscription.current_period_end).toLocaleDateString('es-ES')}`}
+                {subscription.trial_ends_at &&
+                  subscription.status === 'trial' &&
+                  ` · Prueba hasta ${new Date(subscription.trial_ends_at).toLocaleDateString('es-ES')}`}
+              </p>
+            </div>
+            {canManage && subscription.stripe_customer_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={portal.isPending}
+                onClick={() => portal.mutate()}
+              >
+                <ExternalLink />
+                Gestionar facturación
+              </Button>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Este negocio todavía no tiene un plan asignado.</p>
+        )}
+
+        {canManage && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {PLAN_ORDER.map((plan) => (
+              <div key={plan} className="flex flex-col gap-2 rounded-lg border p-4">
+                <p className="text-sm font-semibold">{PLAN_LABELS[plan]}</p>
+                <Button
+                  size="sm"
+                  variant={subscription?.plan === plan ? 'outline' : 'default'}
+                  disabled={subscription?.plan === plan && subscription.status === 'activa'}
+                  loading={checkout.isPending}
+                  onClick={() => checkout.mutate(plan)}
+                >
+                  {subscription?.plan === plan && subscription.status === 'activa'
+                    ? 'Plan actual'
+                    : 'Elegir plan'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="rounded-md bg-secondary/60 p-3 text-xs text-muted-foreground">
+          La facturación real se procesa con Stripe. Si tu cuenta todavía no tiene Stripe conectado,
+          estos botones te lo dirán claramente en vez de simular un pago.
+        </p>
       </CardContent>
     </Card>
   )

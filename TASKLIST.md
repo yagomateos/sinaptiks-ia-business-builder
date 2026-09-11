@@ -43,7 +43,14 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - `automationService.resync()` + botón "Sincronizar ahora" / "Reintentar" en la ficha de la automatización, con el estado y el error visibles en el panel "Resumen".
 - Esto es justo lo que habría detectado antes el desajuste que encontré a mano esta sesión (los workflows de "Recordar citas"/"Reactivar clientes" con `enviar_whatsapp` grabado en vez de `enviar_telegram`) — ahora el panel lo muestra en vez de quedar en silencio.
 
-## 6. Stripe — pendiente
+## 6. Stripe ✅ Implementado
+
+- `_shared/stripe-client.ts`: REST directo a Stripe (mismo estilo que el resto de clientes del proyecto), con verificación de firma de webhook por HMAC-SHA256 vía Web Crypto (algoritmo documentado por Stripe, sin SDK).
+- Edge Function `stripe` (`/checkout`, `/portal`): autenticada, crea/reutiliza el customer y devuelve la URL real de Stripe — nunca simula un pago.
+- Edge Function `stripe-webhook`: sin sesión (la llama Stripe), verifica la firma antes de tocar nada. Es la única fuente de verdad del estado — `checkout.session.completed` guarda `stripe_customer_id`/`stripe_subscription_id`, `customer.subscription.updated/created` actualiza plan/estado/`current_period_end`, `customer.subscription.deleted` marca `cancelada`.
+- Reutiliza la tabla `subscriptions` que ya existía (`plan_key`, `subscription_status`).
+- Pestaña "Facturación" en Ajustes: plan actual, botón "Gestionar facturación" (portal) y elegir plan (checkout) — si Stripe no está configurado, el error real llega hasta el usuario en vez de fingir que funcionó.
+- **Pendiente por credenciales**: faltan `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, y los Price ID (`STRIPE_PRICE_STARTER/GROWTH/SCALE`) — estos últimos no pueden existir hasta crear los productos en una cuenta real de Stripe.
 
 ## 7. Email programado (campañas) — pendiente
 
