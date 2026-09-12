@@ -52,7 +52,7 @@ Seguimiento de la implementación de las 8 funcionalidades pedidas. Se actualiza
 - Edge Function `stripe-webhook`: sin sesión (la llama Stripe), verifica la firma antes de tocar nada. Es la única fuente de verdad del estado — `checkout.session.completed` guarda `stripe_customer_id`/`stripe_subscription_id`, `customer.subscription.updated/created` actualiza plan/estado/`current_period_end`, `customer.subscription.deleted` marca `cancelada`.
 - Reutiliza la tabla `subscriptions` que ya existía (`plan_key`, `subscription_status`).
 - Pestaña "Facturación" en Ajustes: plan actual, botón "Gestionar facturación" (portal) y elegir plan (checkout) — si Stripe no está configurado, el error real llega hasta el usuario en vez de fingir que funcionó.
-- **Pendiente por credenciales**: faltan `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, y los Price ID (`STRIPE_PRICE_STARTER/GROWTH/SCALE`) — estos últimos no pueden existir hasta crear los productos en una cuenta real de Stripe.
+- **Credenciales configuradas en producción** (2026-09-12, modo prueba de Stripe): `STRIPE_SECRET_KEY` (clave del entorno de prueba de la cuenta Stripe del negocio). Los 3 productos/precios (Starter 29€, Growth 79€, Scale 199€/mes — importes de referencia, cambiables desde Stripe sin tocar código) y el endpoint de webhook (`.../functions/v1/stripe-webhook`, con firma verificada) se crearon vía API de Stripe en vez del dashboard. Verificado: `stripe-webhook` responde "Firma inválida" (400) en vez de "no configurado" (503) ante una petición sin firmar. **Pendiente**: son claves de modo prueba (`sk_test_...`) — para cobros reales hace falta repetir la configuración con las claves en modo activo de Stripe.
 
 ## 7. Email programado (campañas) ✅ Implementado
 
