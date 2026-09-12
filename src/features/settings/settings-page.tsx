@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, CreditCard, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
+import { Building2, Check, CreditCard, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,7 +41,7 @@ import {
 import { useAuth } from '@/features/auth/auth-context'
 import { useBusiness } from '@/features/businesses/business-context'
 import { useEditableDraft } from '@/hooks/use-editable-draft'
-import { formatCurrency, initials } from '@/lib/utils'
+import { cn, formatCurrency, initials } from '@/lib/utils'
 
 const ROLE_LABELS: Record<MemberRole, string> = {
   owner: 'Propietario',
@@ -651,6 +651,46 @@ function ChangePasswordCard() {
 
 const PLAN_ORDER: PlanKey[] = ['starter', 'growth', 'scale']
 
+/**
+ * Precio de referencia por plan (los mismos importes creados en Stripe).
+ * Cambiar el precio en Stripe no actualiza esto solo — es texto de la
+ * página, no un valor que se lea de la API en cada carga.
+ */
+const PLAN_PRICES: Record<PlanKey, number> = {
+  starter: 29,
+  growth: 79,
+  scale: 199,
+}
+
+/** Lo que de verdad incluye cada plan a día de hoy, no una lista aspiracional. */
+const PLAN_FEATURES: Record<PlanKey, string[]> = {
+  starter: [
+    '1 negocio',
+    'Hasta 3 automatizaciones activas',
+    '1 agente IA (Recepcionista)',
+    'CRM con pipeline y puntuación de potencial',
+    'Canal: Telegram',
+    'Base de conocimiento con búsqueda por palabra clave',
+  ],
+  growth: [
+    'Todo lo de Starter',
+    'Automatizaciones activas ilimitadas',
+    'Hasta 3 agentes IA (Recepcionista, Comercial, Seguimiento)',
+    'Agendar citas con Google Calendar',
+    'Campañas por email (recordatorios y reactivación)',
+    'Búsqueda semántica en la base de conocimiento',
+  ],
+  scale: [
+    'Todo lo de Growth',
+    'Agentes IA ilimitados, incluido Soporte',
+    'Analíticas avanzadas del negocio',
+    'Historial y auditoría completa de ejecuciones',
+    'Soporte prioritario',
+  ],
+}
+
+const RECOMMENDED_PLAN: PlanKey = 'growth'
+
 function BillingSettings({ businessId, canManage }: { businessId: string; canManage: boolean }) {
   const query = useQuery({
     queryKey: ['subscription', businessId],
@@ -711,23 +751,51 @@ function BillingSettings({ businessId, canManage }: { businessId: string; canMan
         )}
 
         {canManage && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {PLAN_ORDER.map((plan) => (
-              <div key={plan} className="flex flex-col gap-2 rounded-lg border p-4">
-                <p className="text-sm font-semibold">{PLAN_LABELS[plan]}</p>
-                <Button
-                  size="sm"
-                  variant={subscription?.plan === plan ? 'outline' : 'default'}
-                  disabled={subscription?.plan === plan && subscription.status === 'activa'}
-                  loading={checkout.isPending}
-                  onClick={() => checkout.mutate(plan)}
+          <div className="grid gap-4 sm:grid-cols-3">
+            {PLAN_ORDER.map((plan) => {
+              const isCurrent = subscription?.plan === plan && subscription.status === 'activa'
+              const isRecommended = plan === RECOMMENDED_PLAN
+
+              return (
+                <div
+                  key={plan}
+                  className={cn(
+                    'flex flex-col gap-4 rounded-lg border p-4',
+                    isRecommended && 'border-primary shadow-sm',
+                  )}
                 >
-                  {subscription?.plan === plan && subscription.status === 'activa'
-                    ? 'Plan actual'
-                    : 'Elegir plan'}
-                </Button>
-              </div>
-            ))}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">{PLAN_LABELS[plan]}</p>
+                      {isRecommended && <Badge>Recomendado</Badge>}
+                    </div>
+                    <p className="text-2xl font-semibold tabular-nums">
+                      {formatCurrency(PLAN_PRICES[plan])}
+                      <span className="text-sm font-normal text-muted-foreground">/mes</span>
+                    </p>
+                  </div>
+
+                  <ul className="flex-1 space-y-2">
+                    {PLAN_FEATURES[plan].map((feature) => (
+                      <li key={feature} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <Button
+                    size="sm"
+                    variant={isCurrent ? 'outline' : isRecommended ? 'default' : 'outline'}
+                    disabled={isCurrent}
+                    loading={checkout.isPending}
+                    onClick={() => checkout.mutate(plan)}
+                  >
+                    {isCurrent ? 'Plan actual' : 'Elegir plan'}
+                  </Button>
+                </div>
+              )
+            })}
           </div>
         )}
 
