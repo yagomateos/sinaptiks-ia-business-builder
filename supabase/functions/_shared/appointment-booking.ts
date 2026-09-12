@@ -59,21 +59,26 @@ export async function bookCalendarAppointment(
     return { status: 'error', message: `No se pudo guardar la cita: ${insertError.message}` }
   }
 
-  // Mismo motivo que en n8n-callback: sin esto, dos solicitudes para la
-  // misma hora crearían dos eventos solapados en el calendario real.
-  const available = await calendar.isAvailable(input.startsAt.toISOString(), endsAt.toISOString())
-  if (!available) {
-    await admin
-      .from('appointments')
-      .update({ status: 'error', notes: 'Ese hueco ya está ocupado en el calendario' })
-      .eq('id', appointment.id)
-    return {
-      status: 'conflicto',
-      message: `El horario solicitado para "${input.service}" ya está ocupado en el calendario.`,
-    }
-  }
-
+  // Todo lo que sigue habla con Google de verdad (freeBusy y, si toca,
+  // events.insert) — un fallo aquí (token revocado, API sin habilitar en el
+  // proyecto de Google Cloud, un simple corte de red) no puede tirar abajo
+  // la respuesta al cliente: se deja la cita en `error` con la causa real,
+  // igual que si Google hubiera rechazado la creación del evento.
   try {
+    // Mismo motivo que en n8n-callback: sin esto, dos solicitudes para la
+    // misma hora crearían dos eventos solapados en el calendario real.
+    const available = await calendar.isAvailable(input.startsAt.toISOString(), endsAt.toISOString())
+    if (!available) {
+      await admin
+        .from('appointments')
+        .update({ status: 'error', notes: 'Ese hueco ya está ocupado en el calendario' })
+        .eq('id', appointment.id)
+      return {
+        status: 'conflicto',
+        message: `El horario solicitado para "${input.service}" ya está ocupado en el calendario.`,
+      }
+    }
+
     const businessName = await getBusinessName(admin, businessId)
     const event = await calendar.createEvent({
       summary: `${input.service} — ${businessName}`,

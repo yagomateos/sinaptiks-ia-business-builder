@@ -170,6 +170,29 @@ Deno.test('bookCalendarAppointment: hueco ocupado -> conflicto, sin crear el eve
   }
 })
 
+Deno.test('bookCalendarAppointment: freeBusy falla (token revocado, API deshabilitada...) -> error, nunca deja la cita en pendiente para siempre', async () => {
+  const { client, updateCalls } = fakeAdmin({ hasCalendarCredential: true })
+
+  mockFetch((url) => {
+    if (String(url).includes('/freeBusy')) {
+      return new Response(
+        JSON.stringify({ error: { message: 'Google Calendar API has not been used before or it is disabled' } }),
+        { status: 403 },
+      )
+    }
+    throw new Error(`fetch inesperado: ${url}`)
+  })
+
+  try {
+    const result = await bookCalendarAppointment(client, 'biz-1', baseInput)
+
+    assertEquals(result.status, 'error')
+    assertEquals((updateCalls.at(-1) as { status: string }).status, 'error')
+  } finally {
+    restoreFetch()
+  }
+})
+
 Deno.test('bookCalendarAppointment: Google rechaza la creación -> error, sin dejarlo como confirmada', async () => {
   const { client, updateCalls } = fakeAdmin({ hasCalendarCredential: true })
 
