@@ -20,6 +20,7 @@ import { webhookPathFor } from './workflow-builder.ts'
 import { isResendConfigured, sendEmail } from './resend-client.ts'
 import { appointmentRequestEmailHtml } from './email-templates.ts'
 import { searchKnowledge } from './knowledge-search.ts'
+import { bookCalendarAppointment } from './appointment-booking.ts'
 import {
   classifyIntent,
   INTENT_CONFIDENCE_THRESHOLD,
@@ -280,12 +281,16 @@ async function fireImmediateIncomingMessageAutomations(
  * conectaba esa frase con un aviso real — el cliente se iba creyendo que
  * alguien se iba a enterar, y nadie lo hacía. Con esta herramienta, cuando
  * Claude reúne servicio + fecha/hora + contacto, dispara una notificación de
- * verdad en el panel en vez de solo prometerlo en el texto.
+ * verdad en el panel — y si el negocio tiene Google Calendar conectado y hay
+ * email, intenta reservar el hueco de verdad ahí mismo (ver
+ * appointment-booking.ts) en vez de quedarse solo en un aviso pendiente.
  */
 const REGISTER_APPOINTMENT_TOOL = {
   name: 'registrar_solicitud_cita',
   description:
-    'Registra una solicitud de cita para que el equipo del negocio la vea y la confirme. ' +
+    'Registra una solicitud de cita para el equipo del negocio. Si el negocio tiene el calendario ' +
+    'conectado y el cliente dio un email, esto intenta reservar el hueco de verdad al momento — por ' +
+    'eso conviene pedir el email, no solo el teléfono, cuando sea natural en la conversación. ' +
     'Llama a esto UNA SOLA VEZ, justo cuando ya tengas el servicio que quiere el cliente, ' +
     'cuándo le viene bien, y una forma de contacto (teléfono o email). No la llames si todavía ' +
     'falta alguno de esos tres datos — sigue preguntando hasta tenerlos.',
@@ -299,15 +304,23 @@ const REGISTER_APPOINTMENT_TOOL = {
         type: 'string',
         description:
           'La misma fecha/hora convertida a formato ISO 8601 (AAAA-MM-DDTHH:mm:00), calculada a ' +
-          'partir de la fecha de hoy que se te da en el prompt. Necesaria para poder recordarle la ' +
-          'cita 24h antes — sin esto no se le puede avisar.',
+          'partir de la fecha de hoy que se te da en el prompt. Necesaria tanto para recordarle la ' +
+          'cita 24h antes como para poder reservarla de verdad en el calendario si está conectado.',
       },
       telefono: { type: 'string' },
-      email: { type: 'string' },
+      email: {
+        type: 'string',
+        description:
+          'Necesario para reservar de verdad en el calendario (es quien recibe la invitación). Sin ' +
+          'email, la solicitud solo queda pendiente de que el equipo la confirme a mano.',
+      },
     },
     required: ['servicio', 'fecha_hora_preferida'],
   },
 } as const
+
+const APPOINTMENT_DEFAULT_DURATION_MINUTES = 60
+const APPOINTMENT_TIMEZONE = 'Europe/Madrid'
 
 async function registerAppointmentRequest(
   admin: SupabaseClient,
@@ -324,10 +337,38 @@ async function registerAppointmentRequest(
   const email = args.email ? String(args.email) : null
   const contacto = [telefono, email].filter(Boolean).join(' · ') || 'sin contacto adicional'
 
+  // Sin una fecha real no hay forma de saber cuándo faltan 24h para la cita
+  // — "Recordar citas" (automation_broadcast_dispatch) depende de esto.
+  // Se valida en JS porque un ISO mal formado de Claude no debe tirar abajo
+  // el registro de la solicitud.
+  const fechaHoraIso = args.fecha_hora_iso ? String(args.fecha_hora_iso) : null
+  const parsedDate = fechaHoraIso ? new Date(fechaHoraIso) : null
+  const hasValidDate = parsedDate !== null && !isNaN(parsedDate.getTime())
+  const nextActionAt = hasValidDate ? parsedDate.toISOString() : null
+
+  // Con fecha real y un email de contacto, se intenta reservar de verdad en
+  // Google Calendar (si el negocio lo tiene conectado) en vez de limitarse a
+  // avisar al equipo — antes esta herramienta nunca tocaba el calendario, así
+  // que el cliente se quedaba con un "el equipo te contactará" aunque el
+  // hueco estuviera libre y hubiera calendario conectado.
+  const booking =
+    hasValidDate && email
+      ? await bookCalendarAppointment(admin, businessId, {
+          leadId,
+          automationId: null,
+          service: servicio,
+          startsAt: parsedDate,
+          durationMinutes: APPOINTMENT_DEFAULT_DURATION_MINUTES,
+          timezone: APPOINTMENT_TIMEZONE,
+          attendeeEmail: email,
+        })
+      : null
+
   await admin.from('notifications').insert({
     business_id: businessId,
-    level: 'aviso',
-    title: `${nombre} quiere una cita`,
+    level: booking?.status === 'confirmada' ? 'exito' : 'aviso',
+    title:
+      booking?.status === 'confirmada' ? `Cita confirmada con ${nombre}` : `${nombre} quiere una cita`,
     body: `${servicio} — ${fechaHora}. Contacto: ${contacto}`,
     entity_type: 'conversation',
     entity_id: conversationId,
@@ -343,16 +384,8 @@ async function registerAppointmentRequest(
     .eq('id', leadId)
     .maybeSingle()
 
-  const noteLine = `Pidió cita: ${servicio} — ${fechaHora}${telefono ? ` (tel: ${telefono})` : ''}`
+  const noteLine = `${booking?.status === 'confirmada' ? 'Cita confirmada' : 'Pidió cita'}: ${servicio} — ${fechaHora}${telefono ? ` (tel: ${telefono})` : ''}`
   const notes = [currentLead?.notes, noteLine].filter(Boolean).join('\n')
-
-  // Sin una fecha real no hay forma de saber cuándo faltan 24h para la cita
-  // — "Recordar citas" (automation_broadcast_dispatch) depende de esto.
-  // Se valida en JS porque un ISO mal formado de Claude no debe tirar abajo
-  // el registro de la solicitud.
-  const fechaHoraIso = args.fecha_hora_iso ? String(args.fecha_hora_iso) : null
-  const parsedDate = fechaHoraIso ? new Date(fechaHoraIso) : null
-  const nextActionAt = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null
 
   // El error se registra en vez de tragárselo: un trigger de la propia base
   // de datos (notify_stage_change_automations) puede rechazar este UPDATE
@@ -364,7 +397,10 @@ async function registerAppointmentRequest(
     .update({
       ...(email ? { email } : {}),
       notes,
-      next_action: `Confirmar cita: ${servicio} — ${fechaHora}`,
+      next_action:
+        booking?.status === 'confirmada'
+          ? null
+          : `Confirmar cita: ${servicio} — ${fechaHora}`,
       next_action_at: nextActionAt,
       stage: 'cita',
       temperature: 'caliente',
@@ -384,7 +420,23 @@ async function registerAppointmentRequest(
     canal: String(payload.channel ?? payload.canal ?? 'web'),
   })
 
-  return 'Solicitud registrada, el equipo ya lo tiene.'
+  if (booking?.status === 'confirmada') {
+    const when = new Intl.DateTimeFormat('es-ES', {
+      timeZone: APPOINTMENT_TIMEZONE,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(booking.startsAt)
+    return `Cita CONFIRMADA de verdad en el calendario del negocio para el ${when}. Díselo al cliente con seguridad — ya está reservada, no hace falta decir que "el equipo la confirmará".`
+  }
+
+  if (booking?.status === 'conflicto') {
+    return `${booking.message} Pídele al cliente otra fecha u hora distinta y, en cuanto te la dé, vuelve a llamar a esta herramienta con el nuevo dato.`
+  }
+
+  return 'Solicitud registrada, el equipo la revisará y contactará al cliente para confirmar día y hora.'
 }
 
 /**

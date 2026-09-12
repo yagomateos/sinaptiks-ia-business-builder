@@ -21,7 +21,7 @@ import { sendTelegramMessage } from '../_shared/telegram-client.ts'
 import { sendWhatsAppMessage } from '../_shared/whatsapp-client.ts'
 import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
 import { automationEmailHtml } from '../_shared/email-templates.ts'
-import { getCalendarProvider } from '../_shared/calendar/index.ts'
+import { bookCalendarAppointment } from '../_shared/appointment-booking.ts'
 import { findBroadcastCandidates, isDue } from '../_shared/automation-broadcast.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
@@ -388,68 +388,20 @@ async function createCalendarAppointment(
     attendeeEmail: string
   },
 ): Promise<string> {
-  const calendar = await getCalendarProvider(admin, businessId)
-  if (!calendar) {
-    return await recordPendingChannel(businessId, automationId, input.service, 'agendar_cita')
-  }
+  const result = await bookCalendarAppointment(admin, businessId, { ...input, automationId })
 
-  const endsAt = new Date(input.startsAt.getTime() + input.durationMinutes * 60 * 1000)
-  const businessName = await getBusinessName(admin, businessId)
-
-  const { error: insertError, data: appointment } = await admin
-    .from('appointments')
-    .insert({
-      business_id: businessId,
-      lead_id: input.leadId,
-      automation_id: automationId,
-      service: input.service,
-      starts_at: input.startsAt.toISOString(),
-      ends_at: endsAt.toISOString(),
-      timezone: input.timezone,
-      status: 'pendiente',
-    })
-    .select('id')
-    .single()
-
-  if (insertError) throw new Error(`No se pudo guardar la cita: ${insertError.message}`)
-
-  // Comprobar disponibilidad justo antes de crear el evento — sin esto, dos
-  // solicitudes para la misma hora (dos clientes, o una automatización que
-  // se repite) generarían dos eventos solapados en el calendario real, sin
-  // que nadie se enterase. No se crea el evento duplicado: se deja constancia
-  // del conflicto y se avisa al equipo para que lo resuelva a mano.
-  const available = await calendar.isAvailable(input.startsAt.toISOString(), endsAt.toISOString())
-  if (!available) {
-    await admin
-      .from('appointments')
-      .update({ status: 'error', notes: 'Ese hueco ya está ocupado en el calendario' })
-      .eq('id', appointment.id)
-    throw new Error(
-      `El horario solicitado para "${input.service}" ya está ocupado en el calendario. Contacta con el cliente para ofrecerle otra hora.`,
-    )
-  }
-
-  try {
-    const event = await calendar.createEvent({
-      summary: `${input.service} — ${businessName}`,
-      startsAt: input.startsAt.toISOString(),
-      endsAt: endsAt.toISOString(),
-      timezone: input.timezone,
-      attendeeEmail: input.attendeeEmail,
-    })
-
-    await admin
-      .from('appointments')
-      .update({ status: 'confirmada', external_event_id: event.externalEventId })
-      .eq('id', appointment.id)
-
-    return `Cita creada en Google Calendar (${event.externalEventId})`
-  } catch (error) {
-    await admin
-      .from('appointments')
-      .update({ status: 'error', notes: error instanceof Error ? error.message : String(error) })
-      .eq('id', appointment.id)
-    throw error
+  switch (result.status) {
+    case 'sin_calendario':
+      return await recordPendingChannel(businessId, automationId, input.service, 'agendar_cita')
+    case 'conflicto':
+      // Se lanza (en vez de devolver un string) para que quede como fallo en
+      // automation_executions y dispare el aviso al equipo que ya existe
+      // para cualquier paso fallido — no hace falta duplicar esa notificación.
+      throw new Error(`${result.message} Contacta con el cliente para ofrecerle otra hora.`)
+    case 'error':
+      throw new Error(result.message)
+    case 'confirmada':
+      return `Cita creada en Google Calendar (${result.externalEventId})`
   }
 }
 
