@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/services/supabase/client'
 import { toAppError } from '@/services/supabase/errors'
 import type { Profile } from '@/domain/types'
@@ -22,6 +23,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [profileError, setProfileError] = useState<unknown>(null)
@@ -97,6 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         await supabase.auth.signOut()
         setProfile(null)
+        // Sin esto, en un navegador compartido el siguiente usuario que
+        // inicie sesión vería durante un instante datos cacheados del
+        // anterior (leads, conversaciones, negocios...) antes de que cada
+        // query se refresque para su propio user_id.
+        queryClient.clear()
       },
 
       async resetPassword(email) {
@@ -123,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [session, profile, profileError, loading, userId],
+    [session, profile, profileError, loading, userId, queryClient],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
