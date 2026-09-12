@@ -21,6 +21,7 @@ import { isResendConfigured, sendEmail } from './resend-client.ts'
 import { appointmentRequestEmailHtml } from './email-templates.ts'
 import { searchKnowledge } from './knowledge-search.ts'
 import { bookCalendarAppointment } from './appointment-booking.ts'
+import { zonedWallClockToUtc } from './timezone.ts'
 import {
   classifyIntent,
   INTENT_CONFIDENCE_THRESHOLD,
@@ -342,7 +343,7 @@ async function registerAppointmentRequest(
   // Se valida en JS porque un ISO mal formado de Claude no debe tirar abajo
   // el registro de la solicitud.
   const fechaHoraIso = args.fecha_hora_iso ? String(args.fecha_hora_iso) : null
-  const parsedDate = fechaHoraIso ? new Date(fechaHoraIso) : null
+  const parsedDate = fechaHoraIso ? zonedWallClockToUtc(fechaHoraIso, APPOINTMENT_TIMEZONE) : null
   const hasValidDate = parsedDate !== null && !isNaN(parsedDate.getTime())
   const nextActionAt = hasValidDate ? parsedDate.toISOString() : null
 

@@ -22,6 +22,7 @@ import { sendWhatsAppMessage } from '../_shared/whatsapp-client.ts'
 import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
 import { automationEmailHtml } from '../_shared/email-templates.ts'
 import { bookCalendarAppointment } from '../_shared/appointment-booking.ts'
+import { zonedWallClockToUtc } from '../_shared/timezone.ts'
 import { findBroadcastCandidates, isDue } from '../_shared/automation-broadcast.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
@@ -259,8 +260,12 @@ async function performAction(
       // conversation-pipeline.ts) y un contacto directo. Sin calendario
       // conectado o sin esos datos, se registra como pendiente en vez de
       // fingir una cita que no existe en ningún calendario real.
+      const timezone = String(actionConfig.timezone ?? 'Europe/Madrid')
       const startsAtRaw = payload?.fecha_hora_iso ?? payload?.startsAt
-      const startsAt = startsAtRaw ? new Date(String(startsAtRaw)) : null
+      // fecha_hora_iso llega sin offset ("2026-09-14T10:00:00"), pensada como
+      // hora de pared en `timezone` — new Date(str) la trataría como UTC
+      // directamente, un desfase real de 2h en verano (CEST). Ver timezone.ts.
+      const startsAt = startsAtRaw ? zonedWallClockToUtc(String(startsAtRaw), timezone) : null
       const email = payload?.email ? String(payload.email) : null
 
       if (!startsAt || isNaN(startsAt.getTime()) || !email) {
@@ -272,7 +277,7 @@ async function performAction(
         service: String(payload?.servicio ?? payload?.service ?? automationName),
         startsAt,
         durationMinutes: Number(actionConfig.duration_minutes ?? payload?.duration_minutes ?? 60),
-        timezone: String(actionConfig.timezone ?? 'Europe/Madrid'),
+        timezone,
         attendeeEmail: email,
       })
     }
