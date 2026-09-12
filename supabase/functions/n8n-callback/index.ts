@@ -413,6 +413,22 @@ async function createCalendarAppointment(
 
   if (insertError) throw new Error(`No se pudo guardar la cita: ${insertError.message}`)
 
+  // Comprobar disponibilidad justo antes de crear el evento — sin esto, dos
+  // solicitudes para la misma hora (dos clientes, o una automatización que
+  // se repite) generarían dos eventos solapados en el calendario real, sin
+  // que nadie se enterase. No se crea el evento duplicado: se deja constancia
+  // del conflicto y se avisa al equipo para que lo resuelva a mano.
+  const available = await calendar.isAvailable(input.startsAt.toISOString(), endsAt.toISOString())
+  if (!available) {
+    await admin
+      .from('appointments')
+      .update({ status: 'error', notes: 'Ese hueco ya está ocupado en el calendario' })
+      .eq('id', appointment.id)
+    throw new Error(
+      `El horario solicitado para "${input.service}" ya está ocupado en el calendario. Contacta con el cliente para ofrecerle otra hora.`,
+    )
+  }
+
   try {
     const event = await calendar.createEvent({
       summary: `${input.service} — ${businessName}`,

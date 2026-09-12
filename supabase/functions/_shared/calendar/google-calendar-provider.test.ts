@@ -138,6 +138,55 @@ Deno.test('listAvailability: un día completamente ocupado no ofrece ningún hue
   }
 })
 
+Deno.test('isAvailable: true cuando freeBusy no devuelve ningún evento en el rango', async () => {
+  mockFetch((url) => {
+    assertEquals(String(url).includes('/freeBusy'), true)
+    return new Response(JSON.stringify({ calendars: { primary: { busy: [] } } }), { status: 200 })
+  })
+
+  try {
+    const provider = new GoogleCalendarProvider(validCredential(), async () => {})
+    const available = await provider.isAvailable('2026-03-02T10:00:00.000Z', '2026-03-02T10:30:00.000Z')
+
+    assertEquals(available, true)
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('isAvailable: false cuando ya hay un evento solapado en ese rango', async () => {
+  mockFetch(() =>
+    new Response(
+      JSON.stringify({
+        calendars: {
+          primary: { busy: [{ start: '2026-03-02T10:00:00.000Z', end: '2026-03-02T10:30:00.000Z' }] },
+        },
+      }),
+      { status: 200 },
+    ),
+  )
+
+  try {
+    const provider = new GoogleCalendarProvider(validCredential(), async () => {})
+    const available = await provider.isAvailable('2026-03-02T10:00:00.000Z', '2026-03-02T10:30:00.000Z')
+
+    assertEquals(available, false)
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('isAvailable: propaga el error si Google responde con fallo', async () => {
+  mockFetch(() => new Response('error del servidor', { status: 500 }))
+
+  try {
+    const provider = new GoogleCalendarProvider(validCredential(), async () => {})
+    await assertRejects(() => provider.isAvailable('2026-03-02T10:00:00.000Z', '2026-03-02T10:30:00.000Z'))
+  } finally {
+    restoreFetch()
+  }
+})
+
 Deno.test('listAvailability: propaga el error si Google responde con fallo', async () => {
   mockFetch(() => new Response('cuota excedida', { status: 429 }))
 

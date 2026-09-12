@@ -33,5 +33,7 @@ export interface CreateEventResult {
 
 export interface CalendarProvider {
   listAvailability(query: AvailabilityQuery): Promise<TimeSlot[]>
+  /** true si no hay ningún evento que se solape con [startsAt, endsAt). */
+  isAvailable(startsAt: string, endsAt: string): Promise<boolean>
   createEvent(input: CreateEventInput): Promise<CreateEventResult>
 }

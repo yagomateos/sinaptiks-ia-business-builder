@@ -125,6 +125,37 @@ export class GoogleCalendarProvider implements CalendarProvider {
     return slots
   }
 
+  /**
+   * freeBusy acotado exactamente a [startsAt, endsAt) — a diferencia de
+   * `listAvailability`, no depende de que la hora pedida caiga en uno de los
+   * huecos alineados a la cuadrícula de franjas; comprueba la solicitud real
+   * del cliente, venga a la hora que venga.
+   */
+  async isAvailable(startsAt: string, endsAt: string): Promise<boolean> {
+    const accessToken = await this.getAccessToken()
+
+    const response = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        timeMin: startsAt,
+        timeMax: endsAt,
+        items: [{ id: this.calendarId }],
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Google Calendar freeBusy falló (${response.status}): ${await response.text()}`)
+    }
+
+    const data = (await response.json()) as {
+      calendars: Record<string, { busy: { start: string; end: string }[] }>
+    }
+    const busy = data.calendars[this.calendarId]?.busy ?? []
+
+    return busy.length === 0
+  }
+
   async createEvent(input: CreateEventInput): Promise<CreateEventResult> {
     const accessToken = await this.getAccessToken()
 
