@@ -258,13 +258,21 @@ export function LeadDetailPage() {
             </CardContent>
           </Card>
 
-          {(appointmentsQuery.data?.length ?? 0) > 0 && (
+          {(appointmentsQuery.isError || (appointmentsQuery.data?.length ?? 0) > 0) && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">Citas</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {appointmentsQuery.data!.map((appointment) => (
+                {appointmentsQuery.isError ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-destructive">No hemos podido cargar las citas.</p>
+                    <Button variant="outline" size="sm" onClick={() => appointmentsQuery.refetch()}>
+                      Reintentar
+                    </Button>
+                  </div>
+                ) : (
+                  appointmentsQuery.data!.map((appointment) => (
                   <div key={appointment.id} className="flex items-start justify-between gap-3 text-sm">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{appointment.service}</p>
@@ -287,7 +295,8 @@ export function LeadDetailPage() {
                       {APPOINTMENT_STATUS_LABELS[appointment.status]}
                     </Badge>
                   </div>
-                ))}
+                  ))
+                )}
               </CardContent>
             </Card>
           )}

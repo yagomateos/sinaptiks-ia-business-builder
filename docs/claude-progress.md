@@ -21,13 +21,27 @@
     agente, irse de la página sin guardar, y el agente seguía activo de
     verdad. Ahora persiste al momento, igual que en la lista.
   - `agents-page.tsx`: revisado, sin hallazgos.
+- `src/features/crm` reviewed:
+  - `lead-detail-page.tsx`: la tarjeta "Citas" ocultaba un fallo real de
+    la consulta como si el contacto no tuviera ninguna cita — igual patrón
+    que ya se corrigió en el historial de ejecuciones de automatizaciones.
+    Ahora muestra el error con reintento.
+  - `conversation-simulator-page.tsx`: no esperaba a `servicesQuery` antes
+    de dejar escribir (el agente podía responder sin conocer los
+    servicios reales si se enviaba un mensaje muy rápido); y un fallo real
+    de red en agentes/perfil/servicios se veía igual que "todavía no
+    tienes agentes" — mismo patrón de error escondido como vacío.
+  - `leads-page.tsx`, `potential-badge.tsx`: revisados, sin hallazgos.
+  - No tocado (no es un fallo del CRM en concreto, es así en toda la app:
+    Ajustes, Conocimiento también): "Eliminar" contacto borra sin ninguna
+    confirmación. Ver "Known issues".
 
 ## Current task
-Revisando `src/features/crm`
+Ninguna — las 3 features pedidas están revisadas. Ejecutando el build de
+producción final.
 
 ## Remaining
-- `src/features/crm`
-- Run production build (final)
+- (ninguno de los módulos pedidos)
 
 ## Known issues
 - (fuera del alcance de `src/features/automations`, no tocado) El trigger
@@ -39,3 +53,9 @@ Revisando `src/features/crm`
 - Pendiente retomar: secreto propio por automatización en la URL del
   webhook de n8n (`sinaptkis/<id>/<secreto>`) — investigado, no
   implementado, en pausa por esta tanda de revisiones de features.
+- (app entera, no solo CRM) Ningún botón "Eliminar" (contactos, agentes,
+  documentos de Conocimiento, negocios en Ajustes) pide confirmación
+  antes de borrar — un solo clic borra sin vuelta atrás. No existe
+  ningún componente de confirmación (AlertDialog) en la app todavía; para
+  arreglarlo de verdad haría falta construir uno, lo cual es más que un
+  fix puntual — no lo he tocado en ningún módulo de esta tanda.

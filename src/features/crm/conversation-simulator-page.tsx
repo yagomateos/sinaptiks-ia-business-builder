@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/misc'
 import { PageHeader } from '@/components/shared/page-header'
-import { EmptyState, LoadingState } from '@/components/shared/states'
+import { EmptyState, ErrorState, LoadingState } from '@/components/shared/states'
 import { agentsRepository } from '@/services/repositories/agents.repository'
 import { businessProfileRepository } from '@/services/repositories/business-profile.repository'
 import { leadsRepository } from '@/services/repositories/leads.repository'
@@ -202,7 +202,28 @@ export function ConversationSimulatorPage() {
       toast.error(error instanceof Error ? error.message : 'No hemos podido guardar el contacto.'),
   })
 
-  if (agentsQuery.isLoading || profileQuery.isLoading) return <LoadingState />
+  if (agentsQuery.isLoading || profileQuery.isLoading || servicesQuery.isLoading) {
+    return <LoadingState />
+  }
+
+  // Antes, un fallo de red aquí se veía igual que "todavía no tienes
+  // agentes" (agents.length === 0 por defecto) — el aviso decía "créate un
+  // agente" cuando el problema real era que la consulta había fallado.
+  if (agentsQuery.isError || profileQuery.isError || servicesQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <BackLink />
+        <ErrorState
+          error={agentsQuery.error ?? profileQuery.error ?? servicesQuery.error}
+          onRetry={() => {
+            agentsQuery.refetch()
+            profileQuery.refetch()
+            servicesQuery.refetch()
+          }}
+        />
+      </div>
+    )
+  }
 
   if (agents.length === 0) {
     return (
