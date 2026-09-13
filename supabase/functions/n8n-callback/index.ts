@@ -170,7 +170,12 @@ Deno.serve(async (request) => {
       started_at: startedAt,
       finished_at: new Date().toISOString(),
       error_message: errorMessage,
-      payload: { actionType, stepIndex: stepIndex ?? null, totalSteps },
+      payload: {
+        actionType,
+        stepIndex: stepIndex ?? null,
+        totalSteps,
+        source: body.payload?.source ?? 'n8n',
+      },
     })
 
     await admin.from('notifications').insert({
