@@ -22,7 +22,13 @@ export const automationsRepository = {
       .from('automations')
       .select('*')
       .eq('business_id', businessId)
+      // Las automatizaciones de un negocio suelen crearse todas de golpe en
+      // el aprovisionamiento inicial y comparten `created_at` — sin un
+      // desempate estable, filas empatadas pueden salir en orden distinto
+      // en cada consulta (más aún tras un UPDATE), haciendo que la rejilla
+      // parezca "barajarse" solo con activar o pausar una automatización.
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
 
     if (status && status !== 'todas') query = query.eq('status', status)
 
