@@ -71,6 +71,13 @@ async function handleUpsert(ctx: AuthContext, request: Request): Promise<Respons
   const businessId = records[0].businessId
   await assertBusinessAccess(ctx, businessId)
 
+  // Solo se autoriza el negocio de records[0] — si algún otro record trajera
+  // un businessId distinto, se indexaría contenido arbitrario bajo un negocio
+  // que nunca se verificó. Un solo lote siempre pertenece a un único negocio.
+  if (records.some((r) => r.businessId !== businessId)) {
+    throw new HttpError(400, 'Todos los fragmentos deben pertenecer al mismo negocio')
+  }
+
   if (!isSemanticSearchConfigured) {
     // Los chunks ya viven en Postgres — los guardó
     // knowledgeRepository.replaceChunks antes de llamar aquí. Sin

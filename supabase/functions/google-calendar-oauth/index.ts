@@ -17,7 +17,15 @@
  *
  * POST /mint-start-code (sesión real)         → { code } de un solo uso, expira en 2 min
  * GET  /start?businessId=...&code=<uuid>      → redirige al consentimiento de Google
- * GET  /callback?code=...&state=<businessId>  → intercambia el código, guarda el token
+ * GET  /callback?code=...&state=<oauth_start_codes.code>  → intercambia el código, guarda el token
+ *
+ * El `state` que ve Google no es el businessId: sería un CSRF de manual de
+ * OAuth (cualquiera que complete su propio consentimiento de Google podría
+ * llamar a /callback pegando el `state` de otro negocio y secuestrar su
+ * integración de Calendar). `/start` emite un segundo código de un solo uso
+ * — nueva fila en `oauth_start_codes`, ligada al negocio ya verificado — y
+ * ese código, no el businessId, es el `state`. `/callback` solo confía en el
+ * businessId que cuelga de esa fila, nunca en un parámetro de la URL.
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { isGoogleCalendarConfigured } from '../_shared/calendar/index.ts'
@@ -68,6 +76,9 @@ Deno.serve(async (request) => {
 })
 
 const START_CODE_TTL_MS = 2 * 60 * 1000
+// Más margen que el código de arranque: aquí cuenta el tiempo que el usuario
+// tarda en revisar y aceptar la pantalla de consentimiento de Google.
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
 
 /**
  * Único paso de este flujo con sesión real disponible (fetch autenticado,
@@ -139,6 +150,22 @@ async function handleStart(url: URL): Promise<Response> {
     { onConflict: 'business_id,provider' },
   )
 
+  // Segundo código de un solo uso: es este, no el businessId, el que viaja
+  // como `state` — así /callback puede confiar en a qué negocio pertenece
+  // sin fiarse de un parámetro que cualquiera podría manipular en la URL.
+  const { data: stateRow, error: stateError } = await admin
+    .from('oauth_start_codes')
+    .insert({
+      user_id: startCode.user_id,
+      business_id: businessId,
+      provider: 'google_calendar',
+      expires_at: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
+    })
+    .select('code')
+    .single()
+
+  if (stateError) return json({ error: 'No se pudo iniciar la conexión' }, 500)
+
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   authUrl.searchParams.set('client_id', CLIENT_ID)
   authUrl.searchParams.set('redirect_uri', REDIRECT_URI)
@@ -146,17 +173,34 @@ async function handleStart(url: URL): Promise<Response> {
   authUrl.searchParams.set('access_type', 'offline')
   authUrl.searchParams.set('prompt', 'consent')
   authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/calendar')
-  authUrl.searchParams.set('state', businessId)
+  authUrl.searchParams.set('state', stateRow.code)
 
   return Response.redirect(authUrl.toString(), 302)
 }
 
 async function handleCallback(url: URL): Promise<Response> {
   const code = url.searchParams.get('code')
-  const businessId = url.searchParams.get('state')
+  const state = url.searchParams.get('state')
   const redirectTarget = `${APP_URL}/app/canales`
 
-  if (!code || !businessId) return json({ error: 'Faltan parámetros de Google' }, 400)
+  if (!code || !state) return json({ error: 'Faltan parámetros de Google' }, 400)
+
+  // El `state` es de un solo uso y se borra al leerlo, coincida o no — nunca
+  // se confía en un businessId que viniera directamente de la URL.
+  const { data: stateRow } = await admin
+    .from('oauth_start_codes')
+    .delete()
+    .eq('code', state)
+    .eq('provider', 'google_calendar')
+    .select('business_id, expires_at')
+    .maybeSingle()
+
+  if (!stateRow || new Date(stateRow.expires_at).getTime() < Date.now()) {
+    console.warn('Callback de Google Calendar con state desconocido o caducado')
+    return Response.redirect(redirectTarget, 302)
+  }
+
+  const businessId = stateRow.business_id
 
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
