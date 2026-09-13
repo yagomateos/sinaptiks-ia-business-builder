@@ -13,12 +13,19 @@
     igual que "todavía no se ha ejecutado ninguna vez".
   - `automations-page.tsx`: revisado, sin hallazgos.
   - `automation-status-badge.tsx`: revisado, sin hallazgos.
+- `src/features/agents` reviewed:
+  - `agent-detail-page.tsx`: el interruptor de "Activo/En pausa" solo
+    tocaba el borrador local — no se guardaba hasta pulsar "Guardar" en
+    otra parte de la página, a diferencia del mismo interruptor en la
+    lista de agentes, que persiste al instante. Alguien podía "pausar" el
+    agente, irse de la página sin guardar, y el agente seguía activo de
+    verdad. Ahora persiste al momento, igual que en la lista.
+  - `agents-page.tsx`: revisado, sin hallazgos.
 
 ## Current task
-Revisando `src/features/agents`
+Revisando `src/features/crm`
 
 ## Remaining
-- `src/features/agents`
 - `src/features/crm`
 - Run production build (final)
 

@@ -82,6 +82,23 @@ export function AgentDetailPage() {
       toast.error(error instanceof Error ? error.message : 'No hemos podido guardar.'),
   })
 
+  // Aparte de `save` (guarda todo el borrador a la vez): en la lista de
+  // agentes, el interruptor activa/pausa al instante — aquí, antes, solo
+  // tocaba el borrador local y no se guardaba hasta pulsar "Guardar". El
+  // interruptor ya mostraba "en pausa" aunque el agente siguiera activo de
+  // verdad si la persona se iba de la página sin guardar. Ahora persiste al
+  // momento, igual que en la lista.
+  const toggleStatus = useMutation({
+    mutationFn: (status: 'activo' | 'pausado') => agentsRepository.update(agentId, { status }),
+    onSuccess: (updated) => {
+      setDraft(updated)
+      queryClient.invalidateQueries({ queryKey: ['agents', businessId] })
+      toast.success(updated.status === 'activo' ? 'Agente activado' : 'Agente en pausa')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido cambiar el estado.'),
+  })
+
   const regenerate = useMutation({
     mutationFn: async () => {
       const profile = profileQuery.data
@@ -129,7 +146,8 @@ export function AgentDetailPage() {
             <div className="flex items-center gap-2 rounded-md border px-3 py-1.5">
               <Switch
                 checked={isActive}
-                onCheckedChange={(checked) => update({ status: checked ? 'activo' : 'pausado' })}
+                disabled={toggleStatus.isPending}
+                onCheckedChange={(checked) => toggleStatus.mutate(checked ? 'activo' : 'pausado')}
                 aria-label="Activar agente"
               />
               <span className="text-sm">{isActive ? 'Activo' : 'En pausa'}</span>
