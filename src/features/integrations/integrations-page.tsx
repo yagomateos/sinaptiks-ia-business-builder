@@ -23,7 +23,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -435,9 +435,8 @@ function ConnectTelegramDialog({
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="botToken">Token del bot</Label>
-            <Input
+            <PasswordInput
               id="botToken"
-              type="password"
               autoComplete="off"
               placeholder="123456789:AAExampleTokenFromBotFather"
               autoFocus

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -623,9 +624,8 @@ function ChangePasswordCard() {
         <div className="grid gap-4 sm:max-w-lg sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="newPassword">Contraseña nueva</Label>
-            <Input
+            <PasswordInput
               id="newPassword"
-              type="password"
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -633,9 +633,8 @@ function ChangePasswordCard() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="confirmPassword">Repítela</Label>
-            <Input
+            <PasswordInput
               id="confirmPassword"
-              type="password"
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
