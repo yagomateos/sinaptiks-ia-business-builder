@@ -6,11 +6,14 @@ import {
   ChevronsUpDown,
   LogOut,
   Menu,
+  Moon,
   Plus,
   Shield,
+  Sun,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTheme } from '@/hooks/use-theme'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -214,7 +217,25 @@ function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
         <Wordmark />
       </div>
       <div className="hidden lg:block" />
-      <NotificationBell />
+      <div className="flex items-center gap-1">
+        <ThemeToggle />
+        <NotificationBell />
+      </div>
     </div>
+  )
+}
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme()
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggleTheme}
+      aria-label={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+    >
+      {theme === 'dark' ? <Sun /> : <Moon />}
+    </Button>
   )
 }

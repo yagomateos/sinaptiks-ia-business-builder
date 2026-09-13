@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider } from '@/features/auth/auth-context'
 import { BusinessProvider } from '@/features/businesses/business-context'
+import { ThemeProvider, useTheme } from '@/hooks/use-theme'
 import { isSupabaseConfigured } from '@/services/supabase/client'
 import { SetupRequiredPage } from '@/features/misc/setup-required-page'
 import { router } from '@/app/router'
@@ -20,21 +21,28 @@ const queryClient = new QueryClient({
   },
 })
 
+function ThemedToaster() {
+  const { theme } = useTheme()
+  return <Toaster position="top-right" richColors closeButton theme={theme} />
+}
+
 const root = createRoot(document.getElementById('root')!)
 
 root.render(
   <StrictMode>
-    {isSupabaseConfigured ? (
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <BusinessProvider>
-            <RouterProvider router={router} />
-            <Toaster position="top-right" richColors closeButton />
-          </BusinessProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    ) : (
-      <SetupRequiredPage />
-    )}
+    <ThemeProvider>
+      {isSupabaseConfigured ? (
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <BusinessProvider>
+              <RouterProvider router={router} />
+              <ThemedToaster />
+            </BusinessProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      ) : (
+        <SetupRequiredPage />
+      )}
+    </ThemeProvider>
   </StrictMode>,
 )
