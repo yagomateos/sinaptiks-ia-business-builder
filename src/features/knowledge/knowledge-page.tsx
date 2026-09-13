@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Select,
   SelectContent,
@@ -133,6 +134,7 @@ function DocumentCard({
 }) {
   const queryClient = useQueryClient()
   const [viewingChunks, setViewingChunks] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const process = useMutation({
     mutationFn: async () => {
@@ -255,13 +257,21 @@ function DocumentCard({
         <Button
           size="icon"
           variant="ghost"
-          loading={remove.isPending}
-          onClick={() => remove.mutate()}
+          onClick={() => setConfirmingDelete(true)}
           aria-label="Eliminar"
         >
           <Trash2 className="text-muted-foreground" />
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title="Eliminar documento"
+        description={`Vas a eliminar "${document.title}" y no se puede deshacer. Tus agentes dejarán de poder usar esta información.`}
+        loading={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
 
       <ChunksDialog
         document={document}

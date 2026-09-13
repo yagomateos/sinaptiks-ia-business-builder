@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Mail, Phone, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -50,6 +52,7 @@ export function LeadDetailPage() {
   })
 
   const [draft, update] = useEditableDraft(query.data, leadId)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const save = useMutation({
     mutationFn: async () => {
@@ -107,8 +110,7 @@ export function LeadDetailPage() {
               variant="ghost"
               size="sm"
               className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              loading={remove.isPending}
-              onClick={() => remove.mutate()}
+              onClick={() => setConfirmingDelete(true)}
             >
               <Trash2 />
               Eliminar
@@ -344,6 +346,15 @@ export function LeadDetailPage() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title="Eliminar contacto"
+        description={`Vas a eliminar a "${draft.full_name}" y no se puede deshacer. Sus citas y conversaciones dejarán de estar enlazadas a un contacto.`}
+        loading={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
     </div>
   )
 }

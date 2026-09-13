@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Select,
   SelectContent,
@@ -354,6 +355,7 @@ function ServicesSettings({ businessId }: { businessId: string }) {
 function ServiceRow({ service, businessId }: { service: Service; businessId: string }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState(service)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const save = useMutation({
     mutationFn: () =>
@@ -390,8 +392,7 @@ function ServiceRow({ service, businessId }: { service: Service; businessId: str
           <Button
             variant="ghost"
             size="icon"
-            loading={remove.isPending}
-            onClick={() => remove.mutate()}
+            onClick={() => setConfirmingDelete(true)}
             aria-label="Eliminar servicio"
           >
             <Trash2 className="text-muted-foreground" />
@@ -471,6 +472,15 @@ function ServiceRow({ service, businessId }: { service: Service; businessId: str
           Guardar
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title="Eliminar servicio"
+        description={`Vas a eliminar "${draft.name || 'este servicio'}" y no se puede deshacer.`}
+        loading={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
     </Card>
   )
 }
