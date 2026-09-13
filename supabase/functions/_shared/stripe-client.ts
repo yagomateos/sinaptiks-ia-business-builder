@@ -81,6 +81,9 @@ export async function createBillingPortalSession(
   return stripeRequest('billing_portal/sessions', { customer: customerId, return_url: returnUrl })
 }
 
+/** Stripe recomienda rechazar firmas cuyo timestamp se aleje más de esto del reloj actual, para evitar reenvíos de un payload+firma capturados una vez. */
+const WEBHOOK_TOLERANCE_SECONDS = 300
+
 /**
  * Verificación de firma de webhook (algoritmo documentado por Stripe):
  * HMAC-SHA256(secreto, "{timestamp}.{cuerpo crudo}") debe coincidir con `v1`
@@ -98,6 +101,10 @@ export async function verifyStripeSignature(
   const timestamp = parts.t
   const expected = parts.v1
   if (!timestamp || !expected) return false
+
+  const timestampSeconds = Number(timestamp)
+  if (!Number.isFinite(timestampSeconds)) return false
+  if (Math.abs(Date.now() / 1000 - timestampSeconds) > WEBHOOK_TOLERANCE_SECONDS) return false
 
   const key = await crypto.subtle.importKey(
     'raw',

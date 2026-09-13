@@ -45,9 +45,14 @@ Deno.serve(async (request) => {
   if (!secret) return new Response('Falta el identificador', { status: 400 })
 
   // Segunda capa: el secreto que Telegram firma en la cabecera cuando se
-  // configuró el webhook con `secret_token`. Si no coincide, ni se intenta
-  // resolver el negocio.
+  // configuró el webhook con `secret_token`. Si no coincide (o falta), ni se
+  // intenta resolver el negocio.
   const headerSecret = request.headers.get('x-telegram-bot-api-secret-token')
+
+  if (headerSecret !== secret) {
+    console.warn('Webhook de Telegram con firma incorrecta o ausente')
+    return new Response('No autorizado', { status: 401 })
+  }
 
   const { data: resolved, error: resolveError } = await admin.rpc(
     'find_business_by_telegram_secret',
@@ -63,11 +68,6 @@ Deno.serve(async (request) => {
 
   if (!botToken) {
     return new Response('Bot sin token configurado', { status: 500 })
-  }
-
-  if (headerSecret && headerSecret !== secret) {
-    console.warn('Webhook de Telegram con firma incorrecta')
-    return new Response('No autorizado', { status: 401 })
   }
 
   let update: TelegramUpdate

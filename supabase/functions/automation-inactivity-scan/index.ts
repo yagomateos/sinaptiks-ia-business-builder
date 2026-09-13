@@ -92,6 +92,27 @@ Deno.serve(async (request) => {
     for (const conversation of due) {
       const lead = conversation.leads
 
+      // Reclamo atómico antes de disparar nada: el UPDATE solo afecta la fila
+      // si `last_inactivity_notice_at` sigue igual a como estaba en el SELECT
+      // de arriba. Si dos invocaciones del cron se solapan (o esta tarda más
+      // de los 30 min entre disparos), la segunda pierde la carrera aquí y no
+      // vuelve a notificar la misma conversación.
+      const { data: claimed, error: claimError } = await admin
+        .from('conversations')
+        .update({ last_inactivity_notice_at: new Date().toISOString() })
+        .eq('id', conversation.id)
+        .eq('last_message_at', conversation.last_message_at)
+        .or(
+          conversation.last_inactivity_notice_at
+            ? `last_inactivity_notice_at.eq.${conversation.last_inactivity_notice_at}`
+            : 'last_inactivity_notice_at.is.null',
+        )
+        .select('id')
+
+      if (claimError || !claimed || claimed.length === 0) {
+        continue
+      }
+
       try {
         await n8n.trigger(webhookPathFor(automation), {
           name: lead?.full_name,
@@ -107,13 +128,13 @@ Deno.serve(async (request) => {
         fired++
       } catch (error) {
         console.error(`No se pudo disparar la automatización ${automation.id} (inactividad)`, error)
-        continue
+        // Se deshace el reclamo para que la próxima pasada del cron reintente
+        // esta conversación en vez de darla por avisada sin haberlo hecho.
+        await admin
+          .from('conversations')
+          .update({ last_inactivity_notice_at: conversation.last_inactivity_notice_at })
+          .eq('id', conversation.id)
       }
-
-      await admin
-        .from('conversations')
-        .update({ last_inactivity_notice_at: new Date().toISOString() })
-        .eq('id', conversation.id)
     }
   }
 
