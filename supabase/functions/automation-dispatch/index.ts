@@ -20,6 +20,7 @@ const DISPATCH_SECRET = Deno.env.get('AUTOMATION_DISPATCH_SECRET') ?? ''
 
 interface DispatchBody {
   automationId?: string
+  webhookSecret?: string
   businessId?: string
   leadId?: string
   payload?: Record<string, unknown>
@@ -42,12 +43,12 @@ Deno.serve(async (request) => {
     return new Response('Cuerpo no válido', { status: 400 })
   }
 
-  if (!body.automationId || !body.businessId) {
+  if (!body.automationId || !body.businessId || !body.webhookSecret) {
     return new Response('Faltan datos', { status: 400 })
   }
 
   try {
-    await n8n.trigger(webhookPathFor({ id: body.automationId }), {
+    await n8n.trigger(webhookPathFor({ id: body.automationId, webhook_secret: body.webhookSecret }), {
       ...body.payload,
       businessId: body.businessId,
       leadId: body.leadId ?? null,

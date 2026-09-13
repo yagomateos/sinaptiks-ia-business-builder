@@ -31,6 +31,7 @@ interface InactivityAutomation {
   business_id: string
   trigger: { config?: { hours?: number } }
   actions: { type: string }[]
+  webhook_secret: string
 }
 
 interface CandidateConversation {
@@ -53,7 +54,7 @@ Deno.serve(async (request) => {
 
   const { data } = await admin
     .from('automations')
-    .select('id, business_id, trigger, actions')
+    .select('id, business_id, trigger, actions, webhook_secret')
     .eq('status', 'activa')
     .eq('trigger->>type', 'inactividad')
     .not('n8n_workflow_id', 'is', null)
@@ -92,7 +93,7 @@ Deno.serve(async (request) => {
       const lead = conversation.leads
 
       try {
-        await n8n.trigger(webhookPathFor({ id: automation.id }), {
+        await n8n.trigger(webhookPathFor(automation), {
           name: lead?.full_name,
           email: lead?.email,
           phone: lead?.phone,

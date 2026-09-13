@@ -93,7 +93,7 @@ async function createWorkflow(ctx: AuthContext, request: Request): Promise<Respo
   // así el cliente no puede inventarse acciones que no le corresponden.
   const { data: stored, error } = await ctx.db
     .from('automations')
-    .select('id, business_id, name, description, category, trigger, actions')
+    .select('id, business_id, name, description, category, trigger, actions, webhook_secret')
     .eq('id', automation.id)
     .eq('business_id', businessId)
     .maybeSingle()
@@ -139,7 +139,7 @@ async function updateWorkflow(
 
   const { data: stored } = await ctx.db
     .from('automations')
-    .select('id, business_id, name, description, category, trigger, actions, workflow_version')
+    .select('id, business_id, name, description, category, trigger, actions, workflow_version, webhook_secret')
     .eq('n8n_workflow_id', workflowId)
     .eq('business_id', businessId)
     .maybeSingle()
@@ -208,7 +208,7 @@ async function executeOnce(
 
   const { data: stored } = await ctx.db
     .from('automations')
-    .select('id, trigger')
+    .select('id, trigger, webhook_secret')
     .eq('n8n_workflow_id', workflowId)
     .maybeSingle()
 
@@ -239,7 +239,7 @@ async function executeOnce(
       (payload as Record<string, unknown>)?.telefono,
   )
 
-  await n8n.trigger(webhookPathFor({ id: stored.id }), {
+  await n8n.trigger(webhookPathFor(stored), {
     ...(hasRealContactData ? {} : SAMPLE_CONTACT),
     ...payload,
     businessId,

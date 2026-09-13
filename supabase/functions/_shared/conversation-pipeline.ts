@@ -157,6 +157,7 @@ interface IncomingMessageAutomation {
   n8n_workflow_id: string | null
   trigger: { type: string; config?: { channels?: string; intent?: string } }
   actions: { type: string }[]
+  webhook_secret: string
 }
 
 /**
@@ -173,7 +174,7 @@ async function fetchIncomingMessageAutomations(
 
   const { data } = await admin
     .from('automations')
-    .select('id, n8n_workflow_id, trigger, actions')
+    .select('id, n8n_workflow_id, trigger, actions, webhook_secret')
     .eq('business_id', businessId)
     .eq('status', 'activa')
     .eq('trigger->>type', 'mensaje_entrante')
@@ -192,7 +193,7 @@ async function fireAutomation(
   payload: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await n8n.trigger(webhookPathFor({ id: automation.id }), payload)
+    await n8n.trigger(webhookPathFor(automation), payload)
   } catch (error) {
     console.error(`No se pudo disparar la automatización ${automation.id} (mensaje_entrante)`, error)
   }

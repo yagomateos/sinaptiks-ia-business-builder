@@ -71,7 +71,7 @@ Deno.serve(async (request) => {
     // ya desactivó.
     const { data: automation } = await admin
       .from('automations')
-      .select('status')
+      .select('status, webhook_secret')
       .eq('id', job.automation_id)
       .maybeSingle()
 
@@ -85,7 +85,7 @@ Deno.serve(async (request) => {
     }
 
     try {
-      await n8n.trigger(webhookPathFor({ id: job.automation_id }), {
+      await n8n.trigger(webhookPathFor({ id: job.automation_id, webhook_secret: automation.webhook_secret }), {
         ...job.payload,
         businessId: job.business_id,
         leadId: job.lead_id,

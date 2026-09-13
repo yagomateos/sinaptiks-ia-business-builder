@@ -35,6 +35,7 @@ export interface AutomationRecord {
   category: string
   trigger: AutomationTrigger
   actions: AutomationAction[]
+  webhook_secret: string
 }
 
 interface N8nNode {
@@ -53,9 +54,15 @@ interface N8nWorkflowDefinition {
   settings: Record<string, unknown>
 }
 
-/** Ruta del webhook: estable y única por automatización. */
-export function webhookPathFor(automation: { id: string }): string {
-  return `sinaptkis/${automation.id}`
+/**
+ * Ruta del webhook: estable y única por automatización, y ahora con un
+ * secreto propio — antes solo llevaba el id, así que su única protección
+ * era que el UUID fuera difícil de adivinar (sin ningún secreto, a
+ * diferencia del webhook de Telegram). Quien consiguiera un `automation.id`
+ * podría haber disparado esa automatización desde fuera de la app.
+ */
+export function webhookPathFor(automation: { id: string; webhook_secret: string }): string {
+  return `sinaptkis/${automation.id}/${automation.webhook_secret}`
 }
 
 export function buildWorkflow(
