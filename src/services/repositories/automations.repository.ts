@@ -76,33 +76,4 @@ export const automationsRepository = {
     if (error) throw toAppError(error, 'No hemos podido cargar el historial.')
     return (data ?? []) as AutomationExecution[]
   },
-
-  async recordExecution(input: {
-    automationId: UUID
-    businessId: UUID
-    status: AutomationExecution['status']
-    n8nExecutionId?: string | null
-    durationMs?: number | null
-    errorMessage?: string | null
-    payload?: Record<string, unknown>
-  }): Promise<AutomationExecution> {
-    const now = new Date().toISOString()
-    const result = await supabase
-      .from('automation_executions')
-      .insert({
-        automation_id: input.automationId,
-        business_id: input.businessId,
-        status: input.status,
-        n8n_execution_id: input.n8nExecutionId ?? null,
-        started_at: now,
-        finished_at: input.status === 'en_curso' ? null : now,
-        duration_ms: input.durationMs ?? null,
-        error_message: input.errorMessage ?? null,
-        payload: input.payload ?? {},
-      })
-      .select()
-      .single()
-
-    return unwrap(result, 'No hemos podido registrar la ejecución.')
-  },
 }

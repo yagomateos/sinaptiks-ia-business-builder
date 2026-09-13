@@ -57,25 +57,26 @@ export const automationService = {
     return updated
   },
 
-  /** Runs the automation once so the user can see it work. */
+  /**
+   * Lanza la automatización una vez para que el usuario la vea funcionar.
+   *
+   * Esto solo dispara el webhook de n8n — `executeWorkflow` siempre devuelve
+   * `status: 'success'` en cuanto n8n ACEPTA la petición, mucho antes de que
+   * el workflow real termine de ejecutarse. El resultado de verdad (éxito o
+   * error de cada paso) lo escribe `n8n-callback` por su cuenta cuando el
+   * workflow llega al final, exactamente igual que para cualquier disparo
+   * real. Registrar aquí un "éxito" a partir de esa respuesta inmediata
+   * duplicaría esa fila con un resultado inventado — y, si el workflow
+   * fallaba de verdad segundos después, el historial mostraría un "éxito"
+   * falso junto al error real en vez de reemplazarlo.
+   */
   async runOnce(automation: Automation): Promise<void> {
     if (!automation.n8n_workflow_id) {
       throw new AppError('Activa la automatización antes de probarla.')
     }
 
-    const startedAt = Date.now()
-    const execution = await n8nService.executeWorkflow(automation.n8n_workflow_id, {
+    await n8nService.executeWorkflow(automation.n8n_workflow_id, {
       trigger: 'manual',
-    })
-
-    await automationsRepository.recordExecution({
-      automationId: automation.id,
-      businessId: automation.business_id,
-      status: execution.status === 'success' ? 'exito' : 'error',
-      n8nExecutionId: execution.id,
-      durationMs: Date.now() - startedAt,
-      errorMessage: execution.error ?? null,
-      payload: { trigger: 'manual' },
     })
   },
 

@@ -7,6 +7,11 @@ import { HttpError } from './auth.ts'
 const baseUrl = (Deno.env.get('N8N_API_URL') ?? '').replace(/\/+$/, '')
 const apiKey = Deno.env.get('N8N_API_KEY') ?? ''
 
+// Sin esto, un n8n caído o colgado (DNS que resuelve pero no responde, un
+// proxy que se queda escuchando) dejaba la petición esperando indefinidamente
+// — el usuario se quedaba mirando un spinner sin saber si algo iba a pasar.
+const N8N_TIMEOUT_MS = 15_000
+
 export interface N8nWorkflow {
   id: string
   name: string
@@ -29,14 +34,21 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     throw new HttpError(503, 'El motor de automatización no está configurado')
   }
 
-  const response = await fetch(`${baseUrl}/api/v1${path}`, {
-    ...init,
-    headers: {
-      'X-N8N-API-KEY': apiKey,
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}/api/v1${path}`, {
+      ...init,
+      headers: {
+        'X-N8N-API-KEY': apiKey,
+        'Content-Type': 'application/json',
+        ...init?.headers,
+      },
+      signal: AbortSignal.timeout(N8N_TIMEOUT_MS),
+    })
+  } catch (error) {
+    console.error(`n8n ${init?.method ?? 'GET'} ${path} → sin respuesta`, error)
+    throw new HttpError(504, 'El motor de automatización no ha respondido a tiempo')
+  }
 
   const text = await response.text()
 
@@ -118,11 +130,25 @@ export const n8n = {
    * ejecutar un workflow directamente, así que se llama a su URL de webhook.
    */
   async trigger(webhookPath: string, payload: unknown): Promise<void> {
-    const response = await fetch(`${baseUrl}/webhook/${webhookPath}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+    // Sin este guard, con el motor sin configurar `baseUrl` es una cadena
+    // vacía y fetch() recibe una URL relativa mal formada — un TypeError feo
+    // en vez del mismo 503 claro que ya dan el resto de llamadas a n8n.
+    if (!baseUrl) {
+      throw new HttpError(503, 'El motor de automatización no está configurado')
+    }
+
+    let response: Response
+    try {
+      response = await fetch(`${baseUrl}/webhook/${webhookPath}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(N8N_TIMEOUT_MS),
+      })
+    } catch (error) {
+      console.error(`n8n webhook ${webhookPath} → sin respuesta`, error)
+      throw new HttpError(504, 'El motor de automatización no ha respondido a tiempo')
+    }
 
     if (!response.ok) {
       const body = await response.text()
