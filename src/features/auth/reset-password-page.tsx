@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from './auth-context'
 import { AuthLayout } from './auth-layout'
@@ -67,9 +67,8 @@ export function ResetPasswordPage() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-1.5">
           <Label htmlFor="password">Contraseña nueva</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="new-password"
             aria-invalid={Boolean(errors.password)}
             {...register('password')}
@@ -80,9 +79,8 @@ export function ResetPasswordPage() {
 
         <div className="space-y-1.5">
           <Label htmlFor="confirm">Repite la contraseña</Label>
-          <Input
+          <PasswordInput
             id="confirm"
-            type="password"
             autoComplete="new-password"
             aria-invalid={Boolean(errors.confirm)}
             {...register('confirm')}
