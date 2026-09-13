@@ -180,7 +180,61 @@ async function setActive(
   active: boolean,
 ): Promise<Response> {
   await assertAutomationAccess(ctx, workflowId)
-  return json(active ? await n8n.activate(workflowId) : await n8n.deactivate(workflowId))
+
+  try {
+    return json(active ? await n8n.activate(workflowId) : await n8n.deactivate(workflowId))
+  } catch (error) {
+    // El motor puede perder un workflow sin que cambie nada en nuestra base
+    // de datos (una reinstalación de n8n, un túnel de desarrollo que apunta a
+    // una instancia nueva...). En vez de dejar la automatización atascada con
+    // un id que ya no existe en ningún sitio, se reconstruye desde la
+    // definición guardada — la misma que usa createWorkflow — y se reintenta.
+    // Al desactivar no hace falta: si ya no existe en el motor, ya está
+    // efectivamente parado.
+    if (active && error instanceof HttpError && error.status === 404) {
+      return json(await recreateAndActivate(ctx, workflowId))
+    }
+    throw error
+  }
+}
+
+async function recreateAndActivate(ctx: AuthContext, staleWorkflowId: string) {
+  const { data: stored, error } = await ctx.db
+    .from('automations')
+    .select('id, business_id, name, description, category, trigger, actions, webhook_secret')
+    .eq('n8n_workflow_id', staleWorkflowId)
+    .maybeSingle()
+
+  if (error) throw new HttpError(500, 'No se pudo leer la automatización')
+  if (!stored) throw new HttpError(404, 'Esa automatización no existe')
+
+  await ctx.db.from('automations').update({ sync_status: 'syncing' }).eq('id', stored.id)
+
+  const definition = buildWorkflow(stored as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
+
+  try {
+    const created = await n8n.create(definition)
+    const activated = await n8n.activate(created.id)
+
+    // Nunca se marca 'synced' antes de saber que el motor aceptó y activó de
+    // verdad la definición reconstruida.
+    await ctx.db
+      .from('automations')
+      .update({
+        n8n_workflow_id: activated.id,
+        sync_status: 'synced',
+        last_synced_at: new Date().toISOString(),
+        sync_error: null,
+        workflow_version: 1,
+      })
+      .eq('id', stored.id)
+
+    return activated
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error desconocido'
+    await ctx.db.from('automations').update({ sync_status: 'error', sync_error: message }).eq('id', stored.id)
+    throw error
+  }
 }
 
 async function getWorkflow(ctx: AuthContext, workflowId: string): Promise<Response> {

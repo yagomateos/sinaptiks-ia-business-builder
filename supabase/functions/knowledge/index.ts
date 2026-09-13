@@ -86,22 +86,41 @@ async function handleUpsert(ctx: AuthContext, request: Request): Promise<Respons
     return json({ ok: true, indexed: 0, semantic: false })
   }
 
-  const vectors = await embeddingsProvider.embed(records.map((r) => r.content))
-  const store = getVectorStoreProvider()!
+  // Un fallo aquí (Qdrant caído, credenciales inválidas, límite de OpenAI...)
+  // no debe tirar el documento entero: los chunks ya están en Postgres y el
+  // fallback por palabra clave funciona sobre ellos igualmente. Se registra
+  // el detalle real para poder diagnosticarlo, pero se responde 200 — perder
+  // solo la calidad semántica de este lote es preferible a marcar como
+  // "Error" un documento que en realidad sí es usable.
+  try {
+    const vectors = await embeddingsProvider.embed(records.map((r) => r.content))
+    const store = getVectorStoreProvider()!
 
-  await store.upsert(
-    records.map((r, i) => ({
-      id: r.id,
-      vector: vectors[i],
-      payload: { businessId: r.businessId, documentId: r.documentId, chunkIndex: r.chunkIndex, content: r.content },
-    })),
-  )
+    await store.upsert(
+      records.map((r, i) => ({
+        id: r.id,
+        vector: vectors[i],
+        payload: { businessId: r.businessId, documentId: r.documentId, chunkIndex: r.chunkIndex, content: r.content },
+      })),
+    )
 
-  // vector_id = el propio id del chunk (es el mismo id que se usó como punto
-  // en Qdrant) — sirve de marca de "esto ya está indexado semánticamente".
-  await Promise.all(
-    records.map((r) => admin.from('knowledge_chunks').update({ vector_id: r.id }).eq('id', r.id)),
-  )
+    // vector_id = el propio id del chunk (es el mismo id que se usó como punto
+    // en Qdrant) — sirve de marca de "esto ya está indexado semánticamente".
+    await Promise.all(
+      records.map((r) => admin.from('knowledge_chunks').update({ vector_id: r.id }).eq('id', r.id)),
+    )
+  } catch (semanticError) {
+    console.error(
+      `Indexado semántico falló para el negocio ${businessId} (${records.length} fragmentos)`,
+      semanticError,
+    )
+    return json({
+      ok: true,
+      indexed: 0,
+      semantic: false,
+      warning: 'No se pudo indexar semánticamente; se usará búsqueda por palabra clave para este documento.',
+    })
+  }
 
   return json({ ok: true, indexed: records.length, semantic: true })
 }
