@@ -6,6 +6,7 @@ interface SelectableCardProps {
   label: string
   description?: string
   icon?: LucideIcon
+  badge?: string
   selected: boolean
   onToggle(): void
 }
@@ -14,6 +15,7 @@ export function SelectableCard({
   label,
   description,
   icon: Icon,
+  badge,
   selected,
   onToggle,
 }: SelectableCardProps) {
@@ -39,7 +41,14 @@ export function SelectableCard({
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-tight">{label}</p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="text-sm font-medium leading-tight">{label}</p>
+          {badge && (
+            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+              {badge}
+            </span>
+          )}
+        </div>
         {description && (
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
         )}

@@ -24,7 +24,7 @@ import {
   StepIdealCustomer,
   StepServices,
 } from './steps'
-import { emptyService, STEPS, STEP_COUNT, type OnboardingDraft } from './types'
+import { emptyService, getSteps, STEP_COUNT, type OnboardingDraft } from './types'
 
 export function OnboardingPage() {
   const { businessId = '' } = useParams()
@@ -56,6 +56,7 @@ export function OnboardingPage() {
   // loaded. Doing this in an effect would render an empty wizard first.
   if (business && profileLoaded && businessId !== seededBusinessId) {
     setSeededBusinessId(businessId)
+    const template = getIndustryTemplate(business.industry)
     setDraft({
       name: business.name,
       industry: business.industry,
@@ -67,8 +68,12 @@ export function OnboardingPage() {
       valueProposition: savedProfile?.value_proposition ?? '',
       brandVoice: savedProfile?.brand_voice ?? 'profesional',
       services: [emptyService()],
-      goals: savedProfile?.goals ?? [],
-      channels: savedProfile?.contact_channels ?? [],
+      // Sin perfil guardado (primera vez), se sugieren los objetivos y
+      // canales habituales del sector — el usuario los ajusta libremente en
+      // los pasos 5 y 6. Un negocio que retoma el asistente conserva lo que
+      // ya eligió.
+      goals: savedProfile?.goals ?? template.onboarding.suggestedGoals,
+      channels: savedProfile?.contact_channels ?? template.defaultChannels,
     })
   }
 
@@ -128,7 +133,8 @@ export function OnboardingPage() {
     },
   })
 
-  const currentStep = STEPS[step]
+  const steps = useMemo(() => getSteps(draft?.industry ?? 'otro'), [draft?.industry])
+  const currentStep = steps[step]
 
   const validation = useMemo(() => (draft ? validateStep(step, draft) : null), [step, draft])
 

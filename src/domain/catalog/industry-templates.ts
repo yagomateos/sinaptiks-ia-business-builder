@@ -2,11 +2,14 @@
  * Industry templates.
  *
  * A template packages everything a vertical needs: which automations matter,
- * which agents to create, the CRM pipeline, the integrations, and the seed
- * knowledge questions. Adding a vertical = adding an entry here.
+ * which agents to create, the CRM pipeline, the integrations, the seed
+ * knowledge questions, and how the onboarding wizard should talk about this
+ * vertical (step copy, placeholders, suggested goals). Adding a vertical =
+ * adding an entry here — nothing else needs to change.
  */
 import type {
   AgentType,
+  BusinessGoal,
   ContactChannel,
   Industry,
   IntegrationProvider,
@@ -18,6 +21,33 @@ export interface PipelineTemplate {
   name: string
   stages: LeadStage[]
   stageLabels: Partial<Record<LeadStage, string>>
+}
+
+/**
+ * Content that adapts the onboarding wizard to the vertical. The wizard keeps
+ * the same 6 steps for every business — only this content changes per
+ * industry, so there is one set of step components, never one per vertical.
+ */
+export interface IndustryOnboardingContent {
+  /** Step 2 ("¿Qué hace tu negocio?") subtitle and description placeholder. */
+  descriptionSubtitle: string
+  descriptionPlaceholder: string
+  /** Step 3 ("¿Quién es tu cliente ideal?") placeholder and thinking prompts. */
+  idealCustomerPlaceholder: string
+  idealCustomerHints: string[]
+  /** Step 4: what "services" are called in this vertical, and an example. */
+  serviceStepTitle: string
+  serviceStepSubtitle: string
+  serviceLabel: string
+  serviceExample: {
+    name: string
+    description: string
+    price: string
+    durationMinutes: string
+    features: string
+  }
+  /** Step 5: goals pre-selected and flagged "Recomendado" for this vertical. */
+  suggestedGoals: BusinessGoal[]
 }
 
 export interface IndustryTemplate {
@@ -36,6 +66,7 @@ export interface IndustryTemplate {
   knowledgeSeeds: string[]
   /** Pre-written FAQ starters the user can edit. */
   faqSeeds: { question: string; answer: string }[]
+  onboarding: IndustryOnboardingContent
 }
 
 const DEFAULT_PIPELINE: PipelineTemplate = {
@@ -82,6 +113,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Cuánto dura una sesión?', answer: '' },
       { question: '¿Aceptáis seguros médicos?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Explica qué tratamientos hacéis y qué os diferencia. Cuanto más concreto, mejor responderán tus agentes a los pacientes.',
+      descriptionPlaceholder:
+        'Somos una clínica dental en Madrid. Hacemos implantes, ortodoncia invisible y estética dental. Llevamos 12 años y nos diferencia el trato cercano y que damos presupuesto cerrado desde la primera visita.',
+      idealCustomerPlaceholder:
+        'Personas de 30 a 60 años de Madrid centro que buscan una solución definitiva y valoran más la calidad y la confianza que el precio más bajo.',
+      idealCustomerHints: [
+        'Qué problema dental tienen antes de encontrarte',
+        'Qué les preocupa al decidir: precio, dolor, tiempo',
+        'Qué tipo de paciente prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué tratamientos ofreces?',
+      serviceStepSubtitle:
+        'Añade tus tratamientos con precio y duración. Es lo que tus agentes responderán cuando un paciente pregunte.',
+      serviceLabel: 'Tratamiento',
+      serviceExample: {
+        name: 'Implante dental',
+        description: 'Sustitución de una pieza dental con implante de titanio y corona de porcelana.',
+        price: '1200',
+        durationMinutes: '60',
+        features: 'Primera visita, radiografía, garantía 10 años',
+      },
+      suggestedGoals: ['mas_reservas', 'responder_rapido', 'recuperar_clientes', 'conseguir_resenas'],
+    },
   },
   {
     industry: 'restaurante',
@@ -118,6 +174,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Tenéis menú del día?', answer: '' },
       { question: '¿Admitís perros?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta qué tipo de cocina hacéis y qué os hace diferentes. Tus agentes lo usarán para atender a quien pregunte por la carta o por reservar.',
+      descriptionPlaceholder:
+        'Somos un restaurante de cocina mediterránea en Valencia. Especialidad en arroces y pescado fresco. Llevamos 8 años y nos diferencia el producto de mercado y la terraza con vistas.',
+      idealCustomerPlaceholder:
+        'Familias y grupos de amigos de Valencia que buscan una comida de calidad para una ocasión especial, y turistas que buscan cocina local auténtica.',
+      idealCustomerHints: [
+        'Qué buscan al reservar: ocasión especial, comida rápida, grupo grande',
+        'Qué les hace dudar antes de reservar',
+        'Qué tipo de cliente prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué ofrece tu carta?',
+      serviceStepSubtitle:
+        'Añade tus platos o menús destacados con precio. Es lo que tus agentes recomendarán cuando alguien pregunte qué comer.',
+      serviceLabel: 'Plato o menú',
+      serviceExample: {
+        name: 'Arroz de marisco',
+        description: 'Arroz meloso con marisco fresco de lonja, para dos personas.',
+        price: '38',
+        durationMinutes: '',
+        features: 'Para compartir, alérgenos: marisco',
+      },
+      suggestedGoals: ['mas_reservas', 'responder_rapido', 'conseguir_resenas', 'recuperar_clientes'],
+    },
   },
   {
     industry: 'psicologo',
@@ -153,6 +234,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Atiendes online?', answer: '' },
       { question: '¿Cuántas sesiones suelen hacer falta?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Explica qué tipo de terapia haces y a quién ayudas. Tus agentes lo usarán para responder con cuidado en el primer contacto.',
+      descriptionPlaceholder:
+        'Soy psicóloga sanitaria en Barcelona, especializada en terapia cognitivo-conductual para ansiedad y estrés. Atiendo presencial y online, con más de 10 años de experiencia.',
+      idealCustomerPlaceholder:
+        'Adultos de 25 a 45 años que llevan tiempo notando ansiedad o estrés y buscan un espacio serio y confidencial, presencial u online.',
+      idealCustomerHints: [
+        'Qué situación les lleva a buscar terapia',
+        'Qué dudas o miedos tienen antes de dar el paso',
+        'Qué tipo de caso prefieres derivar a otro profesional',
+      ],
+      serviceStepTitle: '¿Qué terapias o servicios ofreces?',
+      serviceStepSubtitle:
+        'Añade tus modalidades de terapia con precio y duración de sesión. Es lo que tus agentes explicarán en el primer contacto.',
+      serviceLabel: 'Terapia o servicio',
+      serviceExample: {
+        name: 'Terapia individual online',
+        description: 'Sesión de terapia cognitivo-conductual por videollamada para ansiedad y estrés.',
+        price: '55',
+        durationMinutes: '50',
+        features: 'Primera sesión de valoración, videollamada, horario de tarde',
+      },
+      suggestedGoals: ['responder_rapido', 'mas_reservas', 'reducir_admin', 'mas_clientes'],
+    },
   },
   {
     industry: 'inmobiliaria',
@@ -189,6 +295,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Puedo visitar el inmueble este fin de semana?', answer: '' },
       { question: '¿Ayudáis con la hipoteca?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta en qué tipo de operaciones e inmuebles estáis especializados. Tus agentes lo usarán para filtrar a compradores, vendedores e inquilinos.',
+      descriptionPlaceholder:
+        'Somos una inmobiliaria en Madrid centro especializada en compraventa de pisos de segunda mano. Llevamos 15 años en el barrio y nos diferencia el conocimiento local y el acompañamiento hasta la firma.',
+      idealCustomerPlaceholder:
+        'Familias que buscan comprar su primera o segunda vivienda en Madrid centro, con presupuesto definido y decisión de compra en menos de 6 meses.',
+      idealCustomerHints: [
+        'Si buscas más compradores, vendedores o ambos',
+        'Qué presupuesto o zona suele interesar a tu cliente típico',
+        'Qué tipo de interesado prefieres filtrar antes de agendar una visita',
+      ],
+      serviceStepTitle: '¿Qué propiedades gestionas?',
+      serviceStepSubtitle:
+        'Añade tus propiedades destacadas o tipos de inmueble con precio. Es lo que tus agentes mostrarán a quien pregunte.',
+      serviceLabel: 'Propiedad',
+      serviceExample: {
+        name: 'Piso 3 habitaciones, Chamberí',
+        description: '90m², exterior, reformado, con ascensor. A 5 minutos del metro.',
+        price: '385000',
+        durationMinutes: '',
+        features: 'Exterior, ascensor, reformado, trastero',
+      },
+      suggestedGoals: ['mas_clientes', 'responder_rapido', 'reducir_admin', 'recuperar_clientes'],
+    },
   },
   {
     industry: 'peluqueria',
@@ -224,6 +355,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Atendéis sin cita previa?', answer: '' },
       { question: '¿Hacéis color y mechas el mismo día?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta qué servicios hacéis y qué os diferencia. Tus agentes lo usarán para recomendar servicio y agendar cita.',
+      descriptionPlaceholder:
+        'Somos un salón de peluquería y estética en Sevilla. Hacemos color, cortes, tratamientos capilares y manicura. Llevamos 6 años y nos diferencia el asesoramiento personalizado en cada visita.',
+      idealCustomerPlaceholder:
+        'Mujeres y hombres de 20 a 55 años de la zona que buscan un salón de confianza para su cuidado habitual, no solo para ocasiones especiales.',
+      idealCustomerHints: [
+        'Qué servicio suelen pedir primero',
+        'Qué les hace elegir un salón fijo en vez de ir cambiando',
+        'Qué tipo de cliente prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué tratamientos o servicios ofreces?',
+      serviceStepSubtitle:
+        'Añade tus servicios con precio y duración. Es lo que tus agentes dirán cuando alguien pregunte por precios o disponibilidad.',
+      serviceLabel: 'Tratamiento',
+      serviceExample: {
+        name: 'Color + mechas',
+        description: 'Coloración completa con mechas balayage, incluye lavado y peinado.',
+        price: '85',
+        durationMinutes: '120',
+        features: 'Lavado, secado, producto profesional',
+      },
+      suggestedGoals: ['mas_reservas', 'responder_rapido', 'conseguir_resenas', 'recuperar_clientes'],
+    },
   },
   {
     industry: 'gimnasio',
@@ -260,6 +416,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Hay permanencia?', answer: '' },
       { question: '¿Puedo hacer una clase de prueba?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta qué tipo de gimnasio o centro sois y qué os diferencia. Tus agentes lo usarán para captar y fidelizar socios.',
+      descriptionPlaceholder:
+        'Somos un gimnasio de barrio en Zaragoza con sala de musculación, clases dirigidas y entrenamiento personal. Llevamos 5 años y nos diferencia el trato cercano y los grupos reducidos en las clases.',
+      idealCustomerPlaceholder:
+        'Personas de 25 a 50 años de la zona que quieren entrenar de forma constante, con o sin experiencia previa, y valoran un ambiente cercano más que una cadena grande.',
+      idealCustomerHints: [
+        'Qué les frena para apuntarse: precio, permanencia, vergüenza a empezar',
+        'Qué clase o servicio suele engancharlos',
+        'Qué tipo de socio prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué cuotas, clases o planes ofreces?',
+      serviceStepSubtitle:
+        'Añade tus modalidades de abono, clases dirigidas o bonos con precio. Es lo que tus agentes explicarán a quien pregunte por precios.',
+      serviceLabel: 'Cuota o clase',
+      serviceExample: {
+        name: 'Cuota mensual básica',
+        description: 'Acceso libre a sala de musculación y cardio, sin permanencia.',
+        price: '39',
+        durationMinutes: '',
+        features: 'Sin matrícula, acceso ilimitado, sin permanencia',
+      },
+      suggestedGoals: ['mas_clientes', 'recuperar_clientes', 'conseguir_resenas', 'reducir_admin'],
+    },
   },
   {
     industry: 'abogado',
@@ -296,6 +477,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Lleváis casos en toda España?', answer: '' },
       { question: '¿Cuánto tarda el proceso?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta en qué áreas del derecho trabajáis y cómo es vuestro proceso. Tus agentes lo usarán para filtrar y orientar a quien consulta.',
+      descriptionPlaceholder:
+        'Somos un despacho de abogados en Bilbao especializado en derecho laboral y de familia. Llevamos 10 años y nos diferencia el trato directo con el abogado desde la primera consulta, sin intermediarios.',
+      idealCustomerPlaceholder:
+        'Particulares y pequeñas empresas de la zona que necesitan asesoramiento en un caso concreto de laboral o familia, y valoran la claridad sobre honorarios desde el principio.',
+      idealCustomerHints: [
+        'Qué tipo de caso es más rentable o interesante para el despacho',
+        'Qué documentación suelen necesitar antes de la primera cita',
+        'Qué tipo de consulta prefieres derivar a otro despacho',
+      ],
+      serviceStepTitle: '¿Qué áreas o servicios legales ofreces?',
+      serviceStepSubtitle:
+        'Añade tus áreas de práctica o servicios con precio orientativo. Es lo que tus agentes explicarán en la primera consulta.',
+      serviceLabel: 'Área o servicio legal',
+      serviceExample: {
+        name: 'Despido improcedente',
+        description: 'Reclamación por despido improcedente, desde la reclamación previa hasta el juicio.',
+        price: '',
+        durationMinutes: '',
+        features: 'Primera consulta gratuita, honorarios según resultado',
+      },
+      suggestedGoals: ['responder_rapido', 'mas_clientes', 'reducir_admin', 'automatizar_ventas'],
+    },
   },
   {
     industry: 'ecommerce',
@@ -332,6 +538,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Puedo devolver un producto?', answer: '' },
       { question: '¿Hacéis envíos internacionales?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta qué vendéis y qué os diferencia de otras tiendas. Tus agentes lo usarán para resolver dudas y recuperar carritos.',
+      descriptionPlaceholder:
+        'Somos una tienda online de ropa deportiva sostenible. Vendemos en toda España con envío en 24-48h. Nos diferencia el material reciclado y la política de devolución sin preguntas.',
+      idealCustomerPlaceholder:
+        'Personas de 20 a 40 años activas en redes que valoran la sostenibilidad y buscan calidad en ropa deportiva, dispuestas a pagar algo más por un producto responsable.',
+      idealCustomerHints: [
+        'Qué les hace dudar antes de comprar: envío, devoluciones, tallas',
+        'Qué canal usan más para escribir: Instagram, WhatsApp, email',
+        'Qué tipo de cliente prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué productos vendes?',
+      serviceStepSubtitle:
+        'Añade tus productos o categorías destacadas con precio. Es lo que tus agentes recomendarán cuando alguien pregunte.',
+      serviceLabel: 'Producto',
+      serviceExample: {
+        name: 'Mallas deportivas recicladas',
+        description: 'Mallas de compresión fabricadas con poliéster reciclado, varias tallas y colores.',
+        price: '39',
+        durationMinutes: '',
+        features: 'Envío 24-48h, devolución gratuita 30 días',
+      },
+      suggestedGoals: ['automatizar_soporte', 'recuperar_clientes', 'conseguir_resenas', 'automatizar_marketing'],
+    },
   },
   {
     industry: 'servicios_profesionales',
@@ -363,6 +594,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Cuánto tardas en entregar?', answer: '' },
       { question: '¿Trabajas en remoto?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Cuenta qué haces y para quién. Tus agentes lo usarán para cualificar a quien contacta antes de pasarte el contacto.',
+      descriptionPlaceholder:
+        'Soy consultora de marketing digital para pequeñas empresas. Ayudo a definir estrategia, gestionar redes sociales y publicidad online. Trabajo en remoto con clientes de toda España.',
+      idealCustomerPlaceholder:
+        'Pequeñas empresas y autónomos que quieren mejorar su presencia online pero no tienen equipo de marketing propio, con un presupuesto mensual definido.',
+      idealCustomerHints: [
+        'Qué problema tienen antes de contactarte',
+        'Qué presupuesto suele manejar tu cliente típico',
+        'Qué tipo de proyecto prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué servicios ofreces?',
+      serviceStepSubtitle:
+        'Añade tus servicios con precio o tarifa orientativa. Es lo que tus agentes explicarán cuando alguien pregunte qué haces.',
+      serviceLabel: 'Servicio',
+      serviceExample: {
+        name: 'Gestión de redes sociales',
+        description: 'Creación y publicación de contenido en Instagram y Facebook, 3 publicaciones por semana.',
+        price: '350',
+        durationMinutes: '',
+        features: 'Informe mensual, sin permanencia',
+      },
+      suggestedGoals: ['mas_clientes', 'reducir_admin', 'automatizar_ventas', 'responder_rapido'],
+    },
   },
   {
     industry: 'otro',
@@ -392,6 +648,31 @@ export const INDUSTRY_TEMPLATES: IndustryTemplate[] = [
       { question: '¿Dónde estáis?', answer: '' },
       { question: '¿Cuánto cuesta?', answer: '' },
     ],
+    onboarding: {
+      descriptionSubtitle:
+        'Explícalo como se lo contarías a un cliente. Cuanto más concreto, mejor responderán tus agentes.',
+      descriptionPlaceholder:
+        'Contamos a qué se dedica tu negocio, desde cuándo, y qué te diferencia de la competencia.',
+      idealCustomerPlaceholder:
+        'Describe quién suele comprarte o contratarte: edad, zona, qué busca y qué valora al decidir.',
+      idealCustomerHints: [
+        'Qué problema tienen antes de encontrarte',
+        'Qué les preocupa al decidir',
+        'Qué tipo de cliente prefieres evitar',
+      ],
+      serviceStepTitle: '¿Qué vendes?',
+      serviceStepSubtitle:
+        'Añade tus servicios o productos con sus precios. Es lo que tus agentes responderán cuando pregunten.',
+      serviceLabel: 'Servicio',
+      serviceExample: {
+        name: 'Nombre del servicio',
+        description: 'Breve descripción de qué incluye',
+        price: '0',
+        durationMinutes: '60',
+        features: 'Qué incluye, separado por comas',
+      },
+      suggestedGoals: [],
+    },
   },
 ]
 

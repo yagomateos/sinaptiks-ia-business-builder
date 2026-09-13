@@ -41,6 +41,7 @@ import {
   GOAL_LABELS,
   INDUSTRY_LABELS,
 } from '@/domain/vocabulary'
+import { getIndustryTemplate } from '@/domain/catalog/industry-templates'
 import { SelectableCard } from './selectable-card'
 import { emptyService, type OnboardingDraft, type ServiceInput } from './types'
 
@@ -63,7 +64,18 @@ export function StepBusiness({ draft, update }: StepProps) {
         <Label htmlFor="industry">Sector</Label>
         <Select
           value={draft.industry}
-          onValueChange={(value) => update({ industry: value as Industry })}
+          onValueChange={(value) => {
+            const industry = value as Industry
+            const template = getIndustryTemplate(industry)
+            update({
+              industry,
+              // Solo se resiembran si el usuario todavía no ha tocado nada —
+              // cambiar de sector no debe borrar objetivos o canales ya
+              // elegidos a propósito.
+              ...(draft.goals.length === 0 ? { goals: template.onboarding.suggestedGoals } : {}),
+              ...(draft.channels.length === 0 ? { channels: template.defaultChannels } : {}),
+            })
+          }}
         >
           <SelectTrigger id="industry">
             <SelectValue />
@@ -112,16 +124,18 @@ export function StepBusiness({ draft, update }: StepProps) {
 /* ------------------------------------------------------------------ Step 2 */
 
 export function StepDescription({ draft, update }: StepProps) {
+  const { onboarding } = getIndustryTemplate(draft.industry)
+
   return (
     <div className="space-y-6">
       <div className="space-y-1.5">
-        <Label htmlFor="description">Cuéntanos qué hace tu empresa</Label>
+        <Label htmlFor="description">Cuéntanos qué hace tu negocio</Label>
         <Textarea
           id="description"
           rows={7}
           value={draft.description}
           onChange={(e) => update({ description: e.target.value })}
-          placeholder="Somos una clínica dental en Madrid. Hacemos implantes, ortodoncia invisible y estética dental. Llevamos 12 años y nos diferencia el trato cercano y que damos presupuesto cerrado desde la primera visita."
+          placeholder={onboarding.descriptionPlaceholder}
         />
         <p className="text-xs text-muted-foreground">
           Esto es lo que tus agentes usarán para presentarte.
@@ -162,6 +176,8 @@ export function StepDescription({ draft, update }: StepProps) {
 /* ------------------------------------------------------------------ Step 3 */
 
 export function StepIdealCustomer({ draft, update }: StepProps) {
+  const { onboarding } = getIndustryTemplate(draft.industry)
+
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
@@ -171,16 +187,16 @@ export function StepIdealCustomer({ draft, update }: StepProps) {
           rows={7}
           value={draft.idealCustomer}
           onChange={(e) => update({ idealCustomer: e.target.value })}
-          placeholder="Personas de 30 a 60 años de Madrid centro que buscan una solución definitiva y valoran más la calidad y la confianza que el precio más bajo."
+          placeholder={onboarding.idealCustomerPlaceholder}
         />
       </div>
 
       <Card className="bg-secondary/40 p-4">
         <p className="text-xs font-medium">Piensa en:</p>
         <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-          <li>• Qué problema tienen antes de encontrarte</li>
-          <li>• Qué les preocupa al decidir</li>
-          <li>• Qué tipo de cliente prefieres evitar</li>
+          {onboarding.idealCustomerHints.map((hint) => (
+            <li key={hint}>• {hint}</li>
+          ))}
         </ul>
       </Card>
     </div>
@@ -190,6 +206,9 @@ export function StepIdealCustomer({ draft, update }: StepProps) {
 /* ------------------------------------------------------------------ Step 4 */
 
 export function StepServices({ draft, update }: StepProps) {
+  const { onboarding } = getIndustryTemplate(draft.industry)
+  const { serviceLabel, serviceExample } = onboarding
+
   function updateService(key: string, patch: Partial<ServiceInput>) {
     update({
       services: draft.services.map((s) => (s.key === key ? { ...s, ...patch } : s)),
@@ -206,7 +225,7 @@ export function StepServices({ draft, update }: StepProps) {
         <Card key={service.key} className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Servicio {index + 1}
+              {serviceLabel} {index + 1}
             </p>
             {draft.services.length > 1 && (
               <Button
@@ -214,7 +233,7 @@ export function StepServices({ draft, update }: StepProps) {
                 variant="ghost"
                 size="icon"
                 onClick={() => removeService(service.key)}
-                aria-label="Quitar servicio"
+                aria-label={`Quitar ${serviceLabel.toLowerCase()}`}
               >
                 <Trash2 className="text-muted-foreground" />
               </Button>
@@ -228,7 +247,7 @@ export function StepServices({ draft, update }: StepProps) {
                 id={`service-name-${service.key}`}
                 value={service.name}
                 onChange={(e) => updateService(service.key, { name: e.target.value })}
-                placeholder="Implante dental"
+                placeholder={serviceExample.name}
               />
             </div>
 
@@ -239,7 +258,7 @@ export function StepServices({ draft, update }: StepProps) {
                 rows={2}
                 value={service.description}
                 onChange={(e) => updateService(service.key, { description: e.target.value })}
-                placeholder="Sustitución de una pieza dental con implante de titanio y corona de porcelana."
+                placeholder={serviceExample.description}
               />
             </div>
 
@@ -253,7 +272,7 @@ export function StepServices({ draft, update }: StepProps) {
                   step="0.01"
                   value={service.price}
                   onChange={(e) => updateService(service.key, { price: e.target.value })}
-                  placeholder="1200"
+                  placeholder={serviceExample.price}
                 />
               </div>
               <div className="space-y-1.5">
@@ -264,7 +283,7 @@ export function StepServices({ draft, update }: StepProps) {
                   min="0"
                   value={service.durationMinutes}
                   onChange={(e) => updateService(service.key, { durationMinutes: e.target.value })}
-                  placeholder="60"
+                  placeholder={serviceExample.durationMinutes}
                 />
               </div>
             </div>
@@ -278,7 +297,7 @@ export function StepServices({ draft, update }: StepProps) {
                 id={`service-features-${service.key}`}
                 value={service.features}
                 onChange={(e) => updateService(service.key, { features: e.target.value })}
-                placeholder="Primera visita, radiografía, garantía 10 años"
+                placeholder={serviceExample.features}
               />
             </div>
 
@@ -305,7 +324,7 @@ export function StepServices({ draft, update }: StepProps) {
         onClick={() => update({ services: [...draft.services, emptyService()] })}
       >
         <Plus />
-        Añadir otro servicio
+        Añadir otro {serviceLabel.toLowerCase()}
       </Button>
     </div>
   )
@@ -314,6 +333,9 @@ export function StepServices({ draft, update }: StepProps) {
 /* ------------------------------------------------------------------ Step 5 */
 
 export function StepGoals({ draft, update }: StepProps) {
+  const { onboarding } = getIndustryTemplate(draft.industry)
+  const suggested = new Set(onboarding.suggestedGoals)
+
   function toggle(goal: BusinessGoal) {
     update({
       goals: draft.goals.includes(goal)
@@ -329,6 +351,7 @@ export function StepGoals({ draft, update }: StepProps) {
           key={goal}
           label={GOAL_LABELS[goal]}
           description={GOAL_DESCRIPTIONS[goal]}
+          badge={suggested.has(goal) ? 'Recomendado' : undefined}
           selected={draft.goals.includes(goal)}
           onToggle={() => toggle(goal)}
         />
@@ -351,6 +374,9 @@ const CHANNEL_ICONS: Record<ContactChannel, LucideIcon> = {
 }
 
 export function StepChannels({ draft, update }: StepProps) {
+  const { defaultChannels } = getIndustryTemplate(draft.industry)
+  const suggested = new Set(defaultChannels)
+
   function toggle(channel: ContactChannel) {
     update({
       channels: draft.channels.includes(channel)
@@ -366,6 +392,7 @@ export function StepChannels({ draft, update }: StepProps) {
           key={channel}
           label={CHANNEL_LABELS[channel]}
           icon={CHANNEL_ICONS[channel]}
+          badge={suggested.has(channel) ? 'Recomendado' : undefined}
           selected={draft.channels.includes(channel)}
           onToggle={() => toggle(channel)}
         />

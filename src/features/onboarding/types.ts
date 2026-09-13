@@ -4,6 +4,7 @@ import type {
   ContactChannel,
   Industry,
 } from '@/domain/types'
+import { getIndustryTemplate } from '@/domain/catalog/industry-templates'
 
 export interface ServiceInput {
   /** Local key for list rendering; not persisted. */
@@ -50,30 +51,38 @@ export interface StepDefinition {
   subtitle: string
 }
 
-export const STEPS: StepDefinition[] = [
-  {
-    title: '¿Cómo se llama tu negocio?',
-    subtitle: 'Confirma los datos básicos. Los usaremos en todo lo que generemos.',
-  },
-  {
-    title: '¿Qué hace tu empresa?',
-    subtitle:
-      'Explícalo como se lo contarías a un cliente. Cuanto más concreto, mejor responderán tus agentes.',
-  },
-  {
-    title: '¿Quién es tu cliente ideal?',
-    subtitle: 'Saber a quién te diriges nos permite filtrar mejor y perder menos tiempo.',
-  },
-  {
-    title: '¿Qué vendes?',
-    subtitle: 'Añade tus servicios con sus precios. Es lo que tus agentes responderán cuando pregunten.',
-  },
-  {
-    title: '¿Qué quieres conseguir?',
-    subtitle: 'Elige todo lo que te interese. Diseñaremos tu sistema alrededor de esto.',
-  },
-  {
-    title: '¿Dónde contactan contigo?',
-    subtitle: 'Marca los canales que usas hoy. Podrás añadir más en cualquier momento.',
-  },
-]
+/**
+ * The wizard keeps the same 6 steps for every industry — only the copy
+ * changes, pulled from the industry template so there is one place to edit
+ * per vertical instead of a step component per vertical.
+ */
+export function getSteps(industry: Industry): StepDefinition[] {
+  const { onboarding } = getIndustryTemplate(industry)
+
+  return [
+    {
+      title: '¿Cómo se llama tu negocio?',
+      subtitle: 'Confirma los datos básicos. Los usaremos en todo lo que generemos.',
+    },
+    {
+      title: '¿Qué hace tu negocio?',
+      subtitle: onboarding.descriptionSubtitle,
+    },
+    {
+      title: '¿Quién es tu cliente ideal?',
+      subtitle: 'Saber a quién te diriges nos permite filtrar mejor y perder menos tiempo.',
+    },
+    {
+      title: onboarding.serviceStepTitle,
+      subtitle: onboarding.serviceStepSubtitle,
+    },
+    {
+      title: '¿Qué quieres conseguir?',
+      subtitle: 'Elige todo lo que te interese. Diseñaremos tu sistema alrededor de esto.',
+    },
+    {
+      title: '¿Dónde contactan contigo?',
+      subtitle: 'Marca los canales que usas hoy. Podrás añadir más en cualquier momento.',
+    },
+  ]
+}
