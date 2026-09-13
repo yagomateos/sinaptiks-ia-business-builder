@@ -37,8 +37,8 @@
     confirmación. Ver "Known issues".
 
 ## Current task
-Ninguna — las 3 features pedidas están revisadas. Ejecutando el build de
-producción final.
+Ninguna — las 3 features pedidas están revisadas y el build de
+producción final ha pasado limpio.
 
 ## Remaining
 - (ninguno de los módulos pedidos)
