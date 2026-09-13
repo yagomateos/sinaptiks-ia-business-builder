@@ -36,4 +36,6 @@ export interface CalendarProvider {
   /** true si no hay ningún evento que se solape con [startsAt, endsAt). */
   isAvailable(startsAt: string, endsAt: string): Promise<boolean>
   createEvent(input: CreateEventInput): Promise<CreateEventResult>
+  /** Idempotente: si el evento ya no existe en el calendario, no es un error. */
+  deleteEvent(externalEventId: string): Promise<void>
 }

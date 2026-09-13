@@ -101,6 +101,55 @@ export async function bookCalendarAppointment(
   }
 }
 
+export type CancelAppointmentResult =
+  | { status: 'cancelada' }
+  | { status: 'no_encontrada' }
+  | { status: 'error'; message: string }
+
+/**
+ * Cancela una cita real: borra el evento del calendario conectado (si lo
+ * hay) y marca la fila como `cancelada`. Si el negocio ya no tiene Calendar
+ * conectado, o la cita nunca llegó a tener un evento real (quedó
+ * "pendiente"/"error"), no hay nada externo que borrar — se marca cancelada
+ * igual, que es lo que de verdad importa de cara al negocio.
+ */
+export async function cancelCalendarAppointment(
+  admin: SupabaseClient,
+  businessId: string,
+  appointmentId: string,
+): Promise<CancelAppointmentResult> {
+  const { data: appointment, error } = await admin
+    .from('appointments')
+    .select('id, status, external_event_id')
+    .eq('id', appointmentId)
+    .eq('business_id', businessId)
+    .maybeSingle()
+
+  if (error) return { status: 'error', message: 'No se pudo comprobar la cita' }
+  if (!appointment) return { status: 'no_encontrada' }
+  if (appointment.status === 'cancelada') return { status: 'cancelada' }
+
+  if (appointment.external_event_id) {
+    const calendar = await getCalendarProvider(admin, businessId)
+    if (calendar) {
+      try {
+        await calendar.deleteEvent(appointment.external_event_id)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { status: 'error', message: `No se pudo borrar el evento del calendario: ${message}` }
+      }
+    }
+  }
+
+  const { error: updateError } = await admin
+    .from('appointments')
+    .update({ status: 'cancelada' })
+    .eq('id', appointmentId)
+
+  if (updateError) return { status: 'error', message: 'No se pudo actualizar la cita' }
+  return { status: 'cancelada' }
+}
+
 async function getBusinessName(admin: SupabaseClient, businessId: string): Promise<string> {
   const { data } = await admin
     .from('business_profiles')

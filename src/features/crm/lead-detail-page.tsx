@@ -26,7 +26,13 @@ import {
   LEAD_STAGE_LABELS,
   LEAD_TEMPERATURE_LABELS,
 } from '@/domain/vocabulary'
-import { LEAD_STAGES, LEAD_TEMPERATURES, type LeadStage, type LeadTemperature } from '@/domain/types'
+import {
+  LEAD_STAGES,
+  LEAD_TEMPERATURES,
+  type Appointment,
+  type LeadStage,
+  type LeadTemperature,
+} from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
 import { PotentialBadge, PotentialBar } from './potential-badge'
 import { useEditableDraft } from '@/hooks/use-editable-draft'
@@ -86,6 +92,19 @@ export function LeadDetailPage() {
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido eliminarlo.'),
+  })
+
+  const [cancelingAppointment, setCancelingAppointment] = useState<Appointment | null>(null)
+
+  const cancelAppointment = useMutation({
+    mutationFn: (appointmentId: string) => appointmentsRepository.cancel(appointmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lead-appointments', leadId] })
+      toast.success('Cita cancelada')
+      setCancelingAppointment(null)
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido cancelar la cita.'),
   })
 
   if (query.isLoading) return <LoadingState />
@@ -282,26 +301,52 @@ export function LeadDetailPage() {
                         {formatDateTime(appointment.starts_at)}
                       </p>
                     </div>
-                    <Badge
-                      variant={
-                        appointment.status === 'confirmada'
-                          ? 'success'
-                          : appointment.status === 'error'
-                            ? 'destructive'
-                            : appointment.status === 'cancelada'
-                              ? 'outline'
-                              : 'secondary'
-                      }
-                      className="shrink-0"
-                    >
-                      {APPOINTMENT_STATUS_LABELS[appointment.status]}
-                    </Badge>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge
+                        variant={
+                          appointment.status === 'confirmada'
+                            ? 'success'
+                            : appointment.status === 'error'
+                              ? 'destructive'
+                              : appointment.status === 'cancelada'
+                                ? 'outline'
+                                : 'secondary'
+                        }
+                      >
+                        {APPOINTMENT_STATUS_LABELS[appointment.status]}
+                      </Badge>
+                      {(appointment.status === 'confirmada' || appointment.status === 'pendiente') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto p-0 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => setCancelingAppointment(appointment)}
+                        >
+                          Cancelar
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   ))
                 )}
               </CardContent>
             </Card>
           )}
+
+          <ConfirmDialog
+            open={Boolean(cancelingAppointment)}
+            onOpenChange={(open) => !open && setCancelingAppointment(null)}
+            title="Cancelar cita"
+            description={
+              cancelingAppointment
+                ? `Vas a cancelar "${cancelingAppointment.service}" del ${formatDateTime(cancelingAppointment.starts_at)}. Si está en Google Calendar, se borra también de ahí.`
+                : ''
+            }
+            confirmLabel="Sí, cancelar"
+            cancelLabel="Volver"
+            loading={cancelAppointment.isPending}
+            onConfirm={() => cancelingAppointment && cancelAppointment.mutate(cancelingAppointment.id)}
+          />
 
           {draft.potential_label && draft.potential_score !== null && (
             <Card>

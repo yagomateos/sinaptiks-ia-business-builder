@@ -22,7 +22,7 @@ import { ErrorState, LoadingState } from '@/components/shared/states'
 import { agentsRepository } from '@/services/repositories/agents.repository'
 import { businessProfileRepository } from '@/services/repositories/business-profile.repository'
 import { aiService } from '@/services/ai'
-import { MODEL_OPTIONS } from '@/services/ai/models'
+import { findModel, MODEL_OPTIONS } from '@/services/ai/models'
 import { CHANNEL_LABELS } from '@/domain/vocabulary'
 import { CONTACT_CHANNELS, type ContactChannel } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
@@ -68,6 +68,11 @@ export function AgentDetailPage() {
         rules: draft.rules,
         system_prompt: draft.system_prompt,
         model: draft.model,
+        // El backend responde con el modelo que de verdad se guarde aquí
+        // (ver ai/index.ts) — sin esto, elegir "OpenAI" en el desplegable
+        // cambiaba `model` pero dejaba `provider` en lo que fuera al crear
+        // el agente, así que la elección seguía sin tener ningún efecto.
+        provider: findModel(draft.model)?.provider ?? draft.provider,
         channels: draft.channels,
         handoff_rules: draft.handoff_rules,
         status: draft.status,

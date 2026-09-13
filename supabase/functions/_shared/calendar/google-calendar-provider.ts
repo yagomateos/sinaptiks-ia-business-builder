@@ -181,4 +181,20 @@ export class GoogleCalendarProvider implements CalendarProvider {
     const data = (await response.json()) as { id: string; htmlLink?: string }
     return { externalEventId: data.id, htmlLink: data.htmlLink }
   }
+
+  async deleteEvent(externalEventId: string): Promise<void> {
+    const accessToken = await this.getAccessToken()
+
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(this.calendarId)}/events/${encodeURIComponent(externalEventId)}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+
+    // 404/410: el evento ya no existe (lo borraron a mano, o esto es un
+    // reintento) — el resultado que quería quien llama ya es cierto, no hay
+    // nada que tratar como fallo.
+    if (!response.ok && response.status !== 404 && response.status !== 410) {
+      throw new Error(`Google Calendar events.delete falló (${response.status}): ${await response.text()}`)
+    }
+  }
 }

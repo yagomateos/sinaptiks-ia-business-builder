@@ -38,7 +38,10 @@ export async function complete(input: CompleteInput): Promise<string> {
     },
     body: JSON.stringify({
       model: input.model || DEFAULT_MODEL,
-      max_tokens: input.maxTokens ?? 1200,
+      // `max_tokens` está obsoleto en Chat Completions para los modelos
+      // recientes (gpt-4.1 en adelante) y da error en vez de aplicarse —
+      // hay que mandar `max_completion_tokens`.
+      max_completion_tokens: input.maxTokens ?? 1200,
       messages: [{ role: 'system', content: input.system }, ...input.messages],
     }),
   })
