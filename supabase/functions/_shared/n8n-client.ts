@@ -53,8 +53,20 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const text = await response.text()
 
   if (!response.ok) {
-    console.error(`n8n ${init?.method ?? 'GET'} ${path} → ${response.status}`, text)
-    // El detalle de n8n se queda en los logs; al usuario le llega algo legible.
+    console.error(`n8n ${init?.method ?? 'GET'} ${path} → ${response.status}`, text.slice(0, 500))
+
+    // La API real de n8n responde JSON incluso en sus 404 ("ese workflow no
+    // existe"). Un 404 en HTML no es n8n — es el propio túnel/proxy (ngrok,
+    // un balanceador...) devolviendo su página de error porque nadie
+    // responde al otro lado. Tratarlo como "flujo borrado" es engañoso: lo
+    // honesto es decir que el motor no está disponible ahora mismo.
+    const isHtml404 =
+      response.status === 404 && (response.headers.get('content-type') ?? '').includes('html')
+
+    if (isHtml404) {
+      throw new HttpError(503, 'El motor de automatización no está disponible ahora mismo')
+    }
+
     throw new HttpError(
       response.status === 404 ? 404 : 502,
       response.status === 404
