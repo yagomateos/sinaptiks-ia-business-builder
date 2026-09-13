@@ -61,11 +61,20 @@ export function AutomationDetailPage() {
     if (!automation?.n8n_workflow_id || syncedRef.current === automation.id) return
     syncedRef.current = automation.id
 
-    automationService.syncStatus(automation).then((synced) => {
-      if (synced.status !== automation.status) {
-        queryClient.setQueryData(['automation', automationId], synced)
-      }
-    })
+    automationService
+      .syncStatus(automation)
+      .then((synced) => {
+        if (synced.status !== automation.status) {
+          queryClient.setQueryData(['automation', automationId], synced)
+        }
+      })
+      .catch((error) => {
+        // Comprobación en segundo plano, no la pidió el usuario — un n8n
+        // lento o caído aquí no debe volcarse como una promesa sin capturar
+        // en la consola del navegador. Ver también: n8n-client.ts ahora
+        // puede tardar hasta 15s antes de fallar con un timeout.
+        console.warn('No se pudo comprobar el estado real en n8n', error)
+      })
   }, [automation, automationId, queryClient])
 
   const toggle = useMutation({
@@ -324,7 +333,11 @@ export function AutomationDetailPage() {
           <CardTitle className="text-sm">Historial</CardTitle>
         </CardHeader>
         <CardContent>
-          {executions.length === 0 ? (
+          {executionsQuery.isLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Cargando historial…</p>
+          ) : executionsQuery.isError ? (
+            <ErrorState error={executionsQuery.error} onRetry={() => executionsQuery.refetch()} />
+          ) : executions.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               Todavía no se ha ejecutado ninguna vez.
             </p>
