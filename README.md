@@ -179,7 +179,7 @@ cuerpo de la petición, para que el cliente no pueda inventarse acciones.
 | Actualizar contacto | ✅ real |
 | Avisar al equipo | ✅ real — notificación en la campana, enlazando a lo que la originó |
 | Esperar X horas | ✅ real (lo hace n8n) |
-| Agente responde | ✅ real — crea la conversación, consulta lo que subiste a Conocimiento, y responde con Claude si hay clave configurada |
+| Agente responde | ✅ real — crea la conversación, consulta lo que subiste a Conocimiento, y responde con el modelo que ese agente tenga configurado (Claude, OpenAI o un servidor Ollama propio), o con el motor de reglas si ese proveedor no tiene credenciales |
 | Puntuar potencial del contacto | ✅ real — en cada mensaje, no solo en el simulador; mueve `potential_score`/`potential_label` en el CRM |
 | Derivar a una persona | ✅ real — por palabra clave, por turnos sin avanzar, o porque el propio agente lo decidió; marca la conversación, avisa por la campana y el agente deja de responder |
 | Telegram (mensajes reales de clientes) | ✅ real, una vez conectado — ver abajo |

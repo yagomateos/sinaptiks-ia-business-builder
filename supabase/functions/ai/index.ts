@@ -21,7 +21,9 @@ import {
   json,
   type AuthContext,
 } from '../_shared/auth.ts'
-import { complete, completeJson, userPrompt, type ClaudeMessage } from '../_shared/anthropic-client.ts'
+import { complete, completeJson, userPrompt } from '../_shared/anthropic-client.ts'
+import { complete as completeOpenAi } from '../_shared/openai-client.ts'
+import { complete as completeOllama } from '../_shared/ollama-client.ts'
 import { AGENT_TYPE_INFO, describeBusiness } from '../_shared/business-context.ts'
 import { searchKnowledge } from '../_shared/knowledge-search.ts'
 
@@ -240,9 +242,12 @@ async function generateReply(ctx: AuthContext, body: unknown) {
 
   // El agente vive tras RLS: si el usuario no es miembro de ese negocio, esta
   // consulta no devuelve ninguna fila y el acceso queda cerrado sin más lógica.
+  // `model`/`provider` se leen de aquí, nunca del cuerpo de la petición: es el
+  // propio negocio quien los fijó en el editor del agente, igual que las
+  // automatizaciones se leen de la base de datos en vez del body en n8n/index.ts.
   const { data: agent, error } = await ctx.db
     .from('ai_agents')
-    .select('id, business_id')
+    .select('id, business_id, model, provider')
     .eq('id', agentId)
     .maybeSingle()
 
@@ -267,10 +272,19 @@ async function generateReply(ctx: AuthContext, body: unknown) {
     ? `${systemPrompt}\n\n---\n\nINFORMACIÓN ADICIONAL DE TU NEGOCIO, relevante para este mensaje:\n\n${relevantKnowledge}`
     : systemPrompt
 
-  return complete({ system, messages, effort: 'low', maxTokens: 700 })
+  switch (agent.provider as string) {
+    case 'openai':
+      return completeOpenAi({ system, messages, model: agent.model, maxTokens: 700 })
+    case 'ollama':
+      return completeOllama({ system, messages, model: agent.model })
+    default:
+      return complete({ system, messages, model: agent.model, effort: 'low', maxTokens: 700 })
+  }
 }
 
-function toClaudeMessages(history: { role: string; content: string }[]): ClaudeMessage[] {
+function toClaudeMessages(
+  history: { role: string; content: string }[],
+): { role: 'user' | 'assistant'; content: string }[] {
   return history
     .filter((m) => m.role !== 'sistema')
     .map((m) => ({

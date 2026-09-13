@@ -11,7 +11,7 @@
 import { HttpError } from './auth.ts'
 
 const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
-const MODEL = 'claude-opus-5'
+const DEFAULT_MODEL = 'claude-opus-5'
 
 export const isAnthropicConfigured = Boolean(apiKey)
 
@@ -42,6 +42,8 @@ interface CompleteInput {
   /** Tareas cortas y de chat rinden bien en 'low'; escribir análisis, en 'medium'. */
   effort?: 'low' | 'medium' | 'high'
   tools?: ClaudeTool[]
+  /** Modelo elegido por el agente (Opus/Sonnet/Haiku) — por defecto, Opus. */
+  model?: string
 }
 
 interface ClaudeRawResponse {
@@ -61,7 +63,7 @@ async function sendRaw(input: CompleteInput): Promise<ClaudeRawResponse> {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: input.model || DEFAULT_MODEL,
       max_tokens: input.maxTokens ?? 1200,
       system: input.system,
       messages: input.messages,

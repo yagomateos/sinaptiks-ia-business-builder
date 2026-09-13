@@ -26,7 +26,7 @@ export const MODEL_OPTIONS: ModelOption[] = [
     hint: 'Claude Sonnet 5 — buen resultado con menor coste por conversación.',
   },
   {
-    id: 'claude-haiku-4-5',
+    id: 'claude-haiku-4-5-20251001',
     label: 'Máxima velocidad',
     provider: 'anthropic',
     hint: 'Claude Haiku 4.5 — respuestas muy rápidas para consultas sencillas.',
