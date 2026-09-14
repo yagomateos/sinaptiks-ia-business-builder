@@ -34,6 +34,21 @@ import {
 const CALLBACK_URL = `${Deno.env.get('SUPABASE_URL')}/functions/v1/n8n-callback`
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
+/**
+ * El cliente sin tipos generados no puede saber que automations→businesses
+ * es de-uno-a-uno e infiere el embed como array — en runtime PostgREST sí
+ * devuelve un único objeto (mismo caso que conversations→leads en
+ * knowledge-search.ts). Se usa solo para que el nombre del workflow en n8n
+ * distinga entre negocios; nunca se guarda como dato de negocio real.
+ */
+function withBusinessName<T extends { businesses?: unknown }>(
+  stored: T,
+): Omit<T, 'businesses'> & { business_name?: string } {
+  const { businesses, ...rest } = stored
+  const business = Array.isArray(businesses) ? businesses[0] : businesses
+  return { ...rest, business_name: (business as { name?: string } | null)?.name }
+}
+
 /** Datos de muestra para el botón "Probar ahora". */
 const SAMPLE_CONTACT = {
   name: 'Contacto de prueba',
@@ -93,7 +108,7 @@ async function createWorkflow(ctx: AuthContext, request: Request): Promise<Respo
   // así el cliente no puede inventarse acciones que no le corresponden.
   const { data: stored, error } = await ctx.db
     .from('automations')
-    .select('id, business_id, name, description, category, trigger, actions, webhook_secret')
+    .select('id, business_id, name, description, category, trigger, actions, webhook_secret, businesses(name)')
     .eq('id', automation.id)
     .eq('business_id', businessId)
     .maybeSingle()
@@ -103,7 +118,7 @@ async function createWorkflow(ctx: AuthContext, request: Request): Promise<Respo
 
   await ctx.db.from('automations').update({ sync_status: 'syncing' }).eq('id', stored.id)
 
-  const definition = buildWorkflow(stored as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
+  const definition = buildWorkflow(withBusinessName(stored) as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
 
   try {
     const created = await n8n.create(definition)
@@ -139,7 +154,7 @@ async function updateWorkflow(
 
   const { data: stored } = await ctx.db
     .from('automations')
-    .select('id, business_id, name, description, category, trigger, actions, workflow_version, webhook_secret')
+    .select('id, business_id, name, description, category, trigger, actions, workflow_version, webhook_secret, businesses(name)')
     .eq('n8n_workflow_id', workflowId)
     .eq('business_id', businessId)
     .maybeSingle()
@@ -148,7 +163,7 @@ async function updateWorkflow(
 
   await ctx.db.from('automations').update({ sync_status: 'syncing' }).eq('id', stored.id)
 
-  const definition = buildWorkflow(stored as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
+  const definition = buildWorkflow(withBusinessName(stored) as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
 
   try {
     const updated = await n8n.update(workflowId, definition)
@@ -211,7 +226,7 @@ async function setActive(
 async function recreateAndActivate(ctx: AuthContext, staleWorkflowId: string) {
   const { data: stored, error } = await ctx.db
     .from('automations')
-    .select('id, business_id, name, description, category, trigger, actions, webhook_secret')
+    .select('id, business_id, name, description, category, trigger, actions, webhook_secret, businesses(name)')
     .eq('n8n_workflow_id', staleWorkflowId)
     .maybeSingle()
 
@@ -220,7 +235,7 @@ async function recreateAndActivate(ctx: AuthContext, staleWorkflowId: string) {
 
   await ctx.db.from('automations').update({ sync_status: 'syncing' }).eq('id', stored.id)
 
-  const definition = buildWorkflow(stored as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
+  const definition = buildWorkflow(withBusinessName(stored) as AutomationRecord, CALLBACK_URL, CALLBACK_SECRET)
 
   try {
     const created = await n8n.create(definition)

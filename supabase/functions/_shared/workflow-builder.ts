@@ -30,6 +30,8 @@ export interface AutomationAction {
 export interface AutomationRecord {
   id: string
   business_id: string
+  /** Solo para que el nombre del workflow en n8n sea distinguible entre negocios — no se guarda en n8n como dato de negocio real, es puramente cosmético. */
+  business_name?: string
   name: string
   description: string | null
   category: string
@@ -88,7 +90,9 @@ export function buildWorkflow(
   })
 
   return {
-    name: `[Sinaptkis] ${automation.name}`,
+    name: automation.business_name
+      ? `[Sinaptkis] ${automation.business_name} — ${automation.name}`
+      : `[Sinaptkis] ${automation.name}`,
     nodes,
     connections: buildConnections(order),
     settings: { executionOrder: 'v1' },
