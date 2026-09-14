@@ -18,7 +18,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respondWithAgent } from '../_shared/conversation-pipeline.ts'
 import { sendTelegramAudio, sendTelegramMessage } from '../_shared/telegram-client.ts'
-import { isElevenLabsConfigured, textToSpeech } from '../_shared/elevenlabs-client.ts'
+import { isTtsConfigured, textToSpeech } from '../_shared/tts.ts'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -110,7 +110,7 @@ Deno.serve(async (request) => {
       // La voz es un extra sobre el texto, nunca lo sustituye: si
       // ElevenLabs no está configurado o falla, el cliente ya tiene su
       // respuesta de texto igualmente.
-      if (isElevenLabsConfigured) {
+      if (isTtsConfigured) {
         try {
           const audio = await textToSpeech(result.reply)
           await sendTelegramAudio(botToken, message.chat.id, audio)
