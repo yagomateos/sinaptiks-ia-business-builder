@@ -236,7 +236,11 @@ export const INTEGRATION_LABELS: Record<IntegrationProvider, string> = {
   anthropic: 'Anthropic Claude',
   ollama: 'Ollama',
   qdrant: 'Base de conocimiento',
-  elevenlabs: 'ElevenLabs',
+  // Mismo criterio que 'qdrant' → 'Base de conocimiento': el motor real
+  // detrás es intercambiable (hoy Piper autoalojado, ElevenLabs si se paga
+  // su plan más adelante), así que la etiqueta no nombra un proveedor
+  // concreto que además podría no ser el que está activo de verdad.
+  elevenlabs: 'Voz (texto a voz)',
 }
 
 export const INTEGRATION_DESCRIPTIONS: Record<IntegrationProvider, string> = {
@@ -252,7 +256,7 @@ export const INTEGRATION_DESCRIPTIONS: Record<IntegrationProvider, string> = {
   anthropic: 'Modelos de IA de Anthropic',
   ollama: 'Modelos de IA en tu propio servidor',
   qdrant: 'Almacena el conocimiento de tu negocio',
-  elevenlabs: 'Voz natural para llamadas y audios',
+  elevenlabs: 'Notas de voz en Telegram y transcripción de audios — activo ahora mismo',
 }
 
 export const INTEGRATION_STATUS_LABELS: Record<IntegrationStatus, string> = {

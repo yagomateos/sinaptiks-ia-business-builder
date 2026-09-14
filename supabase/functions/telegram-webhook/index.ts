@@ -17,8 +17,9 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respondWithAgent } from '../_shared/conversation-pipeline.ts'
-import { sendTelegramAudio, sendTelegramMessage } from '../_shared/telegram-client.ts'
+import { downloadTelegramFile, sendTelegramAudio, sendTelegramMessage } from '../_shared/telegram-client.ts'
 import { isTtsConfigured, textToSpeech } from '../_shared/tts.ts'
+import { isOpenAiConfigured, transcribeAudio } from '../_shared/openai-client.ts'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -31,6 +32,7 @@ interface TelegramUpdate {
     chat: { id: number }
     from?: { first_name?: string; last_name?: string; username?: string }
     text?: string
+    voice?: { file_id: string; duration: number }
   }
 }
 
@@ -79,7 +81,7 @@ Deno.serve(async (request) => {
   }
 
   const message = update.message
-  if (!message?.text) {
+  if (!message?.text && !message?.voice) {
     // Telegram envía otros tipos de update (ediciones, reacciones…) que no
     // nos interesan. Responder 200 evita que Telegram siga reintentando.
     return new Response('ok')
@@ -91,6 +93,21 @@ Deno.serve(async (request) => {
     'Contacto de Telegram'
 
   try {
+    // Si el cliente manda una nota de voz en vez de texto, se transcribe
+    // antes de pasarla al agente — para el resto del flujo (guardar el
+    // mensaje, puntuar el lead, generar la respuesta) es como si hubiera
+    // escrito. Sin OPENAI_API_KEY, el mensaje se descarta con un aviso en
+    // vez de fingir que se entendió.
+    let incomingText = message.text
+    if (!incomingText && message.voice) {
+      if (!isOpenAiConfigured) {
+        console.warn('Nota de voz recibida sin transcripción configurada (falta OPENAI_API_KEY)')
+        return new Response('ok')
+      }
+      const audio = await downloadTelegramFile(botToken, message.voice.file_id)
+      incomingText = await transcribeAudio(audio, 'nota-de-voz.ogg')
+    }
+
     const result = await respondWithAgent(admin, businessId, {
       payload: {
         name: contactName,
@@ -100,16 +117,14 @@ Deno.serve(async (request) => {
         phone: `tg:${message.chat.id}`,
         channel: 'telegram',
       },
-      incomingText: message.text,
+      incomingText: incomingText ?? '',
       channel: 'telegram',
     })
 
     if (result.reply) {
-      await sendTelegramMessage(botToken, message.chat.id, result.reply)
-
-      // La voz es un extra sobre el texto, nunca lo sustituye: si
-      // ElevenLabs no está configurado o falla, el cliente ya tiene su
-      // respuesta de texto igualmente.
+      // La voz llega primero (así lo quiere el negocio), pero sigue siendo
+      // un extra sobre el texto, nunca lo sustituye: si falla o no está
+      // configurada, el texto se manda igual justo después.
       if (isTtsConfigured) {
         try {
           const audio = await textToSpeech(result.reply)
@@ -118,6 +133,8 @@ Deno.serve(async (request) => {
           console.error('No se pudo generar/enviar la nota de voz', voiceError)
         }
       }
+
+      await sendTelegramMessage(botToken, message.chat.id, result.reply)
     }
   } catch (error) {
     console.error('Error procesando mensaje de Telegram', error)

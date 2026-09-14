@@ -60,3 +60,36 @@ export async function complete(input: CompleteInput): Promise<string> {
   if (!text) throw new HttpError(502, 'El modelo de IA ha devuelto una respuesta vacía')
   return text
 }
+
+/**
+ * Whisper (voz a texto). Mismo OPENAI_API_KEY que Chat Completions —
+ * es la misma cuenta de OpenAI, otro endpoint. Se usa para transcribir
+ * notas de voz que el cliente manda por Telegram, antes de pasarlas al
+ * agente como si fueran texto escrito.
+ */
+export async function transcribeAudio(audio: Uint8Array, filename = 'audio.ogg'): Promise<string> {
+  if (!apiKey) throw new HttpError(503, 'La transcripción todavía no está configurada')
+
+  const form = new FormData()
+  form.append('file', new Blob([audio.slice()]), filename)
+  form.append('model', 'whisper-1')
+  form.append('language', 'es')
+
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    console.error(`OpenAI transcriptions respondió ${response.status}`, body)
+    throw new HttpError(502, 'No se pudo transcribir el audio')
+  }
+
+  const data = (await response.json()) as { text?: string }
+  const text = data.text?.trim()
+
+  if (!text) throw new HttpError(502, 'La transcripción ha devuelto una respuesta vacía')
+  return text
+}

@@ -188,11 +188,17 @@ function IntegrationCard({
   // Google Calendar usa OAuth de verdad (google-calendar-oauth Edge
   // Function) en vez del placeholder "conectando" del resto.
   const isGoogleCalendar = provider === 'google_calendar'
+  // Igual que el motor: la voz la gestiona la plataforma (hoy Piper
+  // autoalojado), no cada negocio — no hay nada que el negocio deba
+  // "conectar" aquí, y ya está activo de verdad.
+  const isVoice = provider === 'elevenlabs'
   const status: IntegrationStatus = isEngine
     ? isN8nLive
       ? 'conectado'
       : 'no_conectado'
-    : (integration?.status ?? 'no_conectado')
+    : isVoice
+      ? 'conectado'
+      : (integration?.status ?? 'no_conectado')
 
   const connect = useMutation({
     mutationFn: async () => {
@@ -300,6 +306,11 @@ function IntegrationCard({
           {isN8nLive
             ? 'Lo gestiona Sinaptkis. Tus automatizaciones ya se ejecutan de verdad.'
             : 'Lo gestiona Sinaptkis. Todavía no está activo en tu cuenta.'}
+        </p>
+      ) : isVoice ? (
+        <p className="mt-4 rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+          Lo gestiona Sinaptkis. Tus agentes ya mandan notas de voz por
+          Telegram y entienden los audios que te mandan tus clientes.
         </p>
       ) : isTelegram ? (
         <>
