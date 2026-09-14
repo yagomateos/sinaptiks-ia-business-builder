@@ -194,6 +194,16 @@ async function setActive(
     if (active && error instanceof HttpError && error.status === 404) {
       return json(await recreateAndActivate(ctx, workflowId))
     }
+
+    // Pausar algo que el motor ya no reconoce no puede quedarse atascado
+    // igual: la intención ("que no esté corriendo") ya está satisfecha — si
+    // no existe, no hay nada corriendo. `automationService.pause()` marca
+    // 'pausada' en cuanto esta llamada responde bien, así que basta con no
+    // tratar esto como un error.
+    if (!active && error instanceof HttpError && error.status === 404) {
+      return json({ id: workflowId, active: false })
+    }
+
     throw error
   }
 }
