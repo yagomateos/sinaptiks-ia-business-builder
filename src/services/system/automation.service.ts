@@ -23,10 +23,16 @@ export const automationService = {
       workflowId = workflow.id
     }
 
-    await n8nService.activateWorkflow(workflowId)
+    // El motor puede haber reconstruido el workflow con un id nuevo (ver
+    // recreateAndActivate en la Edge Function `n8n`, cuando el flujo
+    // guardado ya no existía). Guardar el `workflowId` de antes de la
+    // llamada en vez del id real que devuelve pisaría ese id nuevo con el
+    // viejo, dejando la automatización otra vez apuntando a un workflow
+    // que no existe.
+    const activated = await n8nService.activateWorkflow(workflowId)
 
     const updated = await automationsRepository.update(automation.id, {
-      n8n_workflow_id: workflowId,
+      n8n_workflow_id: activated.id,
       status: 'activa',
     })
 
