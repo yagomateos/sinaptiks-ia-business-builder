@@ -172,7 +172,12 @@ async function handleStart(url: URL): Promise<Response> {
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('access_type', 'offline')
   authUrl.searchParams.set('prompt', 'consent')
-  authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/calendar')
+  // Scope mínimo real: el código solo lee/crea/borra EVENTOS (freeBusy,
+  // events.insert, events.delete) — nunca gestiona calendarios enteros ni
+  // quién tiene acceso a ellos. El scope completo 'calendar' pedía permiso
+  // de más (Google lo trata como más sensible de lo necesario para
+  // verificar la app), y freebusy.query acepta 'calendar.events' igual.
+  authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/calendar.events')
   authUrl.searchParams.set('state', stateRow.code)
 
   return Response.redirect(authUrl.toString(), 302)
