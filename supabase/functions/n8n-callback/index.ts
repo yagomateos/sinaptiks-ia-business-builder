@@ -24,6 +24,7 @@ import { automationEmailHtml } from '../_shared/email-templates.ts'
 import { bookCalendarAppointment } from '../_shared/appointment-booking.ts'
 import { zonedWallClockToUtc } from '../_shared/timezone.ts'
 import { findBroadcastCandidates, isDue } from '../_shared/automation-broadcast.ts'
+import { reportError } from '../_shared/sentry.ts'
 
 const CALLBACK_SECRET = Deno.env.get('N8N_CALLBACK_SECRET') ?? ''
 
@@ -142,6 +143,7 @@ Deno.serve(async (request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error desconocido'
     console.error(`Acción ${actionType} falló`, error)
+    reportError(error, { function: 'n8n-callback', actionType })
 
     // Cada paso es una llamada HTTP independiente desde n8n: si este falla,
     // los pasos anteriores ya se ejecutaron (o no habría llegado la llamada).
@@ -523,6 +525,7 @@ async function sendTelegramBroadcast(
       sent++
     } catch (error) {
       console.error(`No se pudo enviar el recordatorio de Telegram a ${lead.id}`, error)
+      reportError(error, { function: 'n8n-callback', task: 'recordatorio-telegram' })
     }
   }
 
@@ -587,6 +590,7 @@ async function sendEmailBroadcast(
       sent++
     } catch (error) {
       console.error(`No se pudo enviar el email de difusión a ${lead.id}`, error)
+      reportError(error, { function: 'n8n-callback', task: 'email-difusion' })
     }
   }
 

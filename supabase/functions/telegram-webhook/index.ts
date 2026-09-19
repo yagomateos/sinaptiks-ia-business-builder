@@ -20,6 +20,7 @@ import { respondWithAgent } from '../_shared/conversation-pipeline.ts'
 import { downloadTelegramFile, sendTelegramAudio, sendTelegramMessage } from '../_shared/telegram-client.ts'
 import { isTtsConfigured, textToSpeech } from '../_shared/tts.ts'
 import { isOpenAiConfigured, transcribeAudio } from '../_shared/openai-client.ts'
+import { reportError } from '../_shared/sentry.ts'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -138,6 +139,7 @@ Deno.serve(async (request) => {
     }
   } catch (error) {
     console.error('Error procesando mensaje de Telegram', error)
+    reportError(error, { function: 'telegram-webhook' })
     // Se responde 200 de todas formas: un 5xx haría que Telegram reintente
     // el mismo mensaje repetidamente, duplicando la conversación.
   }

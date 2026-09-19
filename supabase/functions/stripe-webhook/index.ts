@@ -11,6 +11,7 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { isStripeWebhookConfigured, mapStripeStatus, planForPriceId, verifyStripeSignature } from '../_shared/stripe-client.ts'
+import { reportError } from '../_shared/sentry.ts'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -67,6 +68,7 @@ Deno.serve(async (request) => {
     }
   } catch (error) {
     console.error(`stripe-webhook: error procesando ${event.type}`, error)
+    reportError(error, { function: 'stripe-webhook', eventType: event.type })
     // 500 le dice a Stripe que reintente este evento más tarde.
     return new Response('Error procesando el evento', { status: 500 })
   }

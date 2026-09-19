@@ -22,6 +22,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { respondWithAgent } from '../_shared/conversation-pipeline.ts'
 import { sendWhatsAppMessage, verifyWhatsAppSignature } from '../_shared/whatsapp-client.ts'
+import { reportError } from '../_shared/sentry.ts'
 
 const VERIFY_TOKEN = Deno.env.get('WHATSAPP_VERIFY_TOKEN') ?? ''
 const APP_SECRET = Deno.env.get('WHATSAPP_APP_SECRET') ?? ''
@@ -141,6 +142,7 @@ Deno.serve(async (request) => {
           }
         } catch (error) {
           console.error('Error procesando mensaje de WhatsApp', error)
+          reportError(error, { function: 'whatsapp-webhook' })
           // Se sigue con el resto de mensajes: un fallo en uno no debe tirar
           // los demás, y se responde 200 igualmente para que Meta no
           // reintente la entrega completa.

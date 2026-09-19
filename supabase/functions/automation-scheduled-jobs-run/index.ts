@@ -12,6 +12,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { n8n } from '../_shared/n8n-client.ts'
 import { webhookPathFor } from '../_shared/workflow-builder.ts'
+import { reportError } from '../_shared/sentry.ts'
 
 const DISPATCH_SECRET = Deno.env.get('AUTOMATION_DISPATCH_SECRET') ?? ''
 const MAX_JOBS_PER_RUN = 50
@@ -56,6 +57,7 @@ Deno.serve(async (request) => {
 
   if (claimError) {
     console.error('No se pudieron reclamar jobs programados', claimError)
+    reportError(claimError, { function: 'automation-scheduled-jobs-run' })
     return Response.json({ ok: false, error: claimError.message }, { status: 500 })
   }
 
@@ -118,6 +120,7 @@ Deno.serve(async (request) => {
         .eq('id', job.id)
 
       console.error(`Job ${job.id} (automatización ${job.automation_id}) falló`, error)
+      reportError(error, { function: 'automation-scheduled-jobs-run' })
       if (exhausted) failed++
       else retried++
     }

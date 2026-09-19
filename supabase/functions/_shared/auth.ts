@@ -8,6 +8,7 @@
  * las llamadas que esta función hace a n8n.
  */
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
+import { reportError } from './sentry.ts'
 
 export interface AuthContext {
   userId: string
@@ -101,5 +102,9 @@ export function errorResponse(error: unknown): Response {
     return json({ error: error.message }, error.status)
   }
   console.error('Error no controlado', error)
+  // Solo lo de verdad inesperado (no un HttpError ya manejado) merece una
+  // alerta — un 404/400 esperado no es una emergencia que deba despertar
+  // a nadie.
+  reportError(error)
   return json({ error: 'Error interno' }, 500)
 }

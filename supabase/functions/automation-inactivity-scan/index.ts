@@ -17,6 +17,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { n8n } from '../_shared/n8n-client.ts'
 import { webhookPathFor } from '../_shared/workflow-builder.ts'
+import { reportError } from '../_shared/sentry.ts'
 
 const DISPATCH_SECRET = Deno.env.get('AUTOMATION_DISPATCH_SECRET') ?? ''
 
@@ -128,6 +129,7 @@ Deno.serve(async (request) => {
         fired++
       } catch (error) {
         console.error(`No se pudo disparar la automatización ${automation.id} (inactividad)`, error)
+        reportError(error, { function: 'automation-inactivity-scan' })
         // Se deshace el reclamo para que la próxima pasada del cron reintente
         // esta conversación en vez de darla por avisada sin haberlo hecho.
         await admin
