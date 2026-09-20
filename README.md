@@ -355,7 +355,22 @@ npm run dev       # servidor de desarrollo
 npm run build     # typecheck + build de producción
 npm run preview   # servir el build
 npm run lint      # eslint
+npm test          # dominio (Vitest + node) y componentes (Vitest + jsdom)
+npm run test:e2e  # Playwright, contra `npm run dev` en localhost:5173
 ```
+
+`npm test` cubre dos tipos de test con el mismo runner: los de dominio
+(`.test.ts`) corren en un entorno 'node' plano; los de componentes
+(`.test.tsx`, con React Testing Library) declaran `// @vitest-environment
+jsdom` en su primera línea para tener DOM simulado, sin pagar ese coste en
+los cientos de tests que no lo necesitan.
+
+`npm run test:e2e` (Playwright) solo cubre páginas públicas, validación en
+cliente y redirecciones de ruta protegida — nunca un login o registro con
+credenciales reales. El desarrollo local de este proyecto apunta al mismo
+Supabase desplegado que producción (ver más arriba), así que un flujo
+autenticado ejecutado en cada test run dejaría cuentas o filas de verdad en
+esa base de datos.
 
 ---
 
