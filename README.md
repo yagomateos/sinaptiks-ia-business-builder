@@ -316,12 +316,21 @@ update profiles set platform_role = 'super_admin' where email = 'tu@email.com';
 - **Rutas protegidas** por sesión, por negocio con onboarding completo y por rol.
 - **Errores traducidos** a mensajes que una persona no técnica entiende.
 - Estados de carga, vacío y error en cada pantalla.
+- **Confirm email activo** en Supabase Auth — nadie entra sin confirmar su correo.
+- **Motor de n8n vigilado** (`n8n-health-check`, cron cada 5 min): si el
+  proceso se cae entero en la VPS, se reporta a Sentry igual que un error de
+  las Edge Functions.
+- **Backup diario de n8n**: `/root/backups/n8n-backup.sh` en la VPS (cron a
+  las 3:30, retiene 14 días) hace `pg_dump` del Postgres dedicado de n8n. Vive
+  solo en la VPS, no en este repo — restaurar es `gunzip -c backup.sql.gz |
+  docker exec -i app-n8n-8ae4428d-postgres psql -U "$POSTGRES_USER"
+  "$POSTGRES_DB"`. Es backup local: protege de un borrado o migración
+  accidental, no de perder el disco entero (para eso haría falta una copia
+  fuera de la VPS, pendiente).
 
 ### Antes de tener usuarios reales
 
-1. Activa **Confirm email** en *Authentication → Providers → Email*. Sin eso
-   cualquiera crea cuentas ilimitadas con correos inventados.
-2. Revisa que ninguna secret key haya acabado en un repo o un chat.
+1. Revisa que ninguna secret key haya acabado en un repo o un chat.
 
 ---
 
