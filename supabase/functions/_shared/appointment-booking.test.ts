@@ -15,7 +15,7 @@
 Deno.env.set('GOOGLE_CLIENT_ID', 'client-id-test')
 Deno.env.set('GOOGLE_CLIENT_SECRET', 'client-secret-test')
 
-const { bookCalendarAppointment } = await import('./appointment-booking.ts')
+const { bookCalendarAppointment, cancelCalendarAppointment } = await import('./appointment-booking.ts')
 import { assertEquals } from 'jsr:@std/assert@1'
 
 const realFetch = globalThis.fetch
@@ -35,7 +35,10 @@ function restoreFetch() {
  * `getBusinessName` y sus propios inserts/updates de `appointments`) — no es
  * un mock genérico, solo cubre exactamente esta secuencia de llamadas.
  */
-function fakeAdmin(options: { hasCalendarCredential: boolean }) {
+function fakeAdmin(options: {
+  hasCalendarCredential: boolean
+  appointmentRow?: Record<string, unknown> | null
+}) {
   const appointments: Record<string, unknown>[] = []
   const state = { updateCalls: [] as Record<string, unknown>[] }
 
@@ -74,6 +77,9 @@ function fakeAdmin(options: { hasCalendarCredential: boolean }) {
       }
       if (this._table === 'business_profiles') {
         return { data: { business_name: 'Clínica de prueba' } }
+      }
+      if (this._table === 'appointments') {
+        return { data: options.appointmentRow ?? null, error: null }
       }
       return { data: null }
     },
@@ -211,6 +217,135 @@ Deno.test('bookCalendarAppointment: Google rechaza la creación -> error, sin de
 
     assertEquals(result.status, 'error')
     assertEquals((updateCalls.at(-1) as { status: string }).status, 'error')
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: cita inexistente (o de otro negocio) -> no_encontrada', async () => {
+  const { client } = fakeAdmin({ hasCalendarCredential: true, appointmentRow: null })
+
+  mockFetch(() => {
+    throw new Error('no debería llamar a fetch si la cita no existe')
+  })
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'no_encontrada')
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: ya estaba cancelada -> idempotente, sin tocar Google', async () => {
+  const { client } = fakeAdmin({
+    hasCalendarCredential: true,
+    appointmentRow: { id: 'appt-1', status: 'cancelada', external_event_id: 'evt_abc123' },
+  })
+
+  mockFetch(() => {
+    throw new Error('no debería llamar a fetch si ya estaba cancelada')
+  })
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'cancelada')
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: sin evento externo (pendiente/error) -> cancelada sin llamar a Google', async () => {
+  const { client, updateCalls } = fakeAdmin({
+    hasCalendarCredential: true,
+    appointmentRow: { id: 'appt-1', status: 'pendiente', external_event_id: null },
+  })
+
+  mockFetch(() => {
+    throw new Error('no debería llamar a fetch sin evento externo que borrar')
+  })
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'cancelada')
+    assertEquals(updateCalls.at(-1), { status: 'cancelada' })
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: con evento real -> lo borra en Google y marca cancelada', async () => {
+  const { client, updateCalls } = fakeAdmin({
+    hasCalendarCredential: true,
+    appointmentRow: { id: 'appt-1', status: 'confirmada', external_event_id: 'evt_abc123' },
+  })
+
+  const state = { deleteCalledWith: '' }
+  mockFetch((url, init) => {
+    state.deleteCalledWith = String(url)
+    assertEquals(init?.method, 'DELETE')
+    return new Response(null, { status: 204 })
+  })
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'cancelada')
+    assertEquals(state.deleteCalledWith.includes('evt_abc123'), true)
+    assertEquals(updateCalls.at(-1), { status: 'cancelada' })
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: evento ya borrado a mano en Google (404) -> se trata como éxito', async () => {
+  const { client, updateCalls } = fakeAdmin({
+    hasCalendarCredential: true,
+    appointmentRow: { id: 'appt-1', status: 'confirmada', external_event_id: 'evt_abc123' },
+  })
+
+  mockFetch(() => new Response('Not Found', { status: 404 }))
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'cancelada')
+    assertEquals(updateCalls.at(-1), { status: 'cancelada' })
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: Google rechaza el borrado (token revocado) -> error, sin marcar cancelada', async () => {
+  const { client, updateCalls } = fakeAdmin({
+    hasCalendarCredential: true,
+    appointmentRow: { id: 'appt-1', status: 'confirmada', external_event_id: 'evt_abc123' },
+  })
+
+  mockFetch(() => new Response('invalid_grant', { status: 400 }))
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'error')
+    // No debe haber ninguna llamada update() que marque la cita como cancelada.
+    assertEquals(updateCalls.some((c) => c.status === 'cancelada'), false)
+  } finally {
+    restoreFetch()
+  }
+})
+
+Deno.test('cancelCalendarAppointment: calendario ya desconectado pero la cita tenía evento -> cancelada sin llamar a Google', async () => {
+  const { client, updateCalls } = fakeAdmin({
+    hasCalendarCredential: false,
+    appointmentRow: { id: 'appt-1', status: 'confirmada', external_event_id: 'evt_abc123' },
+  })
+
+  mockFetch(() => {
+    throw new Error('no debería llamar a fetch sin Calendar conectado')
+  })
+
+  try {
+    const result = await cancelCalendarAppointment(client, 'biz-1', 'appt-1')
+    assertEquals(result.status, 'cancelada')
+    assertEquals(updateCalls.at(-1), { status: 'cancelada' })
   } finally {
     restoreFetch()
   }
