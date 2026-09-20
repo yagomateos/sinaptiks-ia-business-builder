@@ -46,4 +46,16 @@ export const agentsRepository = {
     const { error } = await supabase.from('ai_agents').delete().eq('id', agentId)
     if (error) throw toAppError(error, 'No hemos podido eliminar el agente.')
   },
+
+  /** Cuántos agentes de este negocio están activos ahora mismo — para comprobar el límite del plan antes de activar uno más. */
+  async countActive(businessId: UUID): Promise<number> {
+    const { count, error } = await supabase
+      .from('ai_agents')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('status', 'activo')
+
+    if (error) throw toAppError(error, 'No hemos podido comprobar tus agentes activos.')
+    return count ?? 0
+  },
 }

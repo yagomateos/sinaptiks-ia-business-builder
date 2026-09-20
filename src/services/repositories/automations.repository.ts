@@ -68,6 +68,18 @@ export const automationsRepository = {
     if (error) throw toAppError(error, 'No hemos podido eliminar la automatización.')
   },
 
+  /** Cuántas automatizaciones de este negocio están activas ahora mismo — para comprobar el límite del plan antes de activar una más. */
+  async countActive(businessId: UUID): Promise<number> {
+    const { count, error } = await supabase
+      .from('automations')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('status', 'activa')
+
+    if (error) throw toAppError(error, 'No hemos podido comprobar tus automatizaciones activas.')
+    return count ?? 0
+  },
+
   async listExecutions(businessId: UUID, automationId?: UUID, limit = 50): Promise<AutomationExecution[]> {
     let query = supabase
       .from('automation_executions')

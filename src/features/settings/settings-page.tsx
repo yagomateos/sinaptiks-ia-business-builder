@@ -24,6 +24,7 @@ import { businessesRepository } from '@/services/repositories/businesses.reposit
 import { businessProfileRepository } from '@/services/repositories/business-profile.repository'
 import { subscriptionsRepository } from '@/services/repositories/subscriptions.repository'
 import { stripeService } from '@/services/billing/stripe.service'
+import { PLAN_LIMITS } from '@/domain/catalog/plan-limits'
 import {
   BRAND_VOICE_LABELS,
   GOAL_LABELS,
@@ -671,12 +672,17 @@ const PLAN_PRICES: Record<PlanKey, number> = {
   scale: 199,
 }
 
-/** Lo que de verdad incluye cada plan a día de hoy, no una lista aspiracional. */
+/**
+ * Lo que de verdad incluye cada plan a día de hoy, no una lista aspiracional.
+ * Las cifras de automatizaciones/agentes salen de `PLAN_LIMITS` — es la misma
+ * tabla que `plan-quota.ts` usa para bloquear la activación de más: cambiar
+ * un número aquí sin cambiarlo allí (o al revés) ya no es posible.
+ */
 const PLAN_FEATURES: Record<PlanKey, string[]> = {
   starter: [
     '1 negocio',
-    'Hasta 3 automatizaciones activas',
-    '1 agente IA (Recepcionista)',
+    `Hasta ${PLAN_LIMITS.starter.maxActiveAutomations} automatizaciones activas`,
+    `${PLAN_LIMITS.starter.maxActiveAgents} agente IA (Recepcionista)`,
     'CRM con pipeline y puntuación de potencial',
     'Canal: Telegram',
     'Base de conocimiento con búsqueda por palabra clave',
@@ -684,7 +690,7 @@ const PLAN_FEATURES: Record<PlanKey, string[]> = {
   growth: [
     'Todo lo de Starter',
     'Automatizaciones activas ilimitadas',
-    'Hasta 3 agentes IA (Recepcionista, Comercial, Seguimiento)',
+    `Hasta ${PLAN_LIMITS.growth.maxActiveAgents} agentes IA (Recepcionista, Comercial, Seguimiento)`,
     'Agendar citas con Google Calendar',
     'Campañas por email (recordatorios y reactivación)',
     'Búsqueda semántica en la base de conocimiento',

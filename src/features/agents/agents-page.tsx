@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/misc'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/shared/states'
 import { agentsRepository } from '@/services/repositories/agents.repository'
+import { agentService } from '@/services/system/agent.service'
 import { CHANNEL_LABELS } from '@/domain/vocabulary'
 import type { AiAgent, ContactChannel } from '@/domain/types'
 import { useBusiness } from '@/features/businesses/business-context'
@@ -57,8 +58,7 @@ function AgentCard({ agent }: { agent: AiAgent }) {
   const queryClient = useQueryClient()
 
   const toggle = useMutation({
-    mutationFn: (active: boolean) =>
-      agentsRepository.update(agent.id, { status: active ? 'activo' : 'pausado' }),
+    mutationFn: (active: boolean) => agentService.setStatus(agent, active ? 'activo' : 'pausado'),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['agents', agent.business_id] })
       toast.success(

@@ -20,6 +20,7 @@ import { Switch, Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/u
 import { PageHeader } from '@/components/shared/page-header'
 import { ErrorState, LoadingState } from '@/components/shared/states'
 import { agentsRepository } from '@/services/repositories/agents.repository'
+import { agentService } from '@/services/system/agent.service'
 import { businessProfileRepository } from '@/services/repositories/business-profile.repository'
 import { aiService } from '@/services/ai'
 import { findModel, MODEL_OPTIONS } from '@/services/ai/models'
@@ -94,7 +95,10 @@ export function AgentDetailPage() {
   // verdad si la persona se iba de la página sin guardar. Ahora persiste al
   // momento, igual que en la lista.
   const toggleStatus = useMutation({
-    mutationFn: (status: 'activo' | 'pausado') => agentsRepository.update(agentId, { status }),
+    mutationFn: (status: 'activo' | 'pausado') => {
+      if (!draft) throw new Error('Nada que activar')
+      return agentService.setStatus(draft, status)
+    },
     onSuccess: (updated) => {
       setDraft(updated)
       queryClient.invalidateQueries({ queryKey: ['agents', businessId] })

@@ -8,11 +8,16 @@ import { n8nService } from '@/services/n8n'
 import { automationsRepository } from '@/services/repositories/automations.repository'
 import { activityRepository } from '@/services/repositories/activity.repository'
 import { AppError } from '@/services/supabase/errors'
+import { assertCanActivateAutomation } from '@/services/system/plan-quota'
 import type { Automation, UUID } from '@/domain/types'
 
 export const automationService = {
   /** Creates the workflow if needed, then activates it. */
   async activate(automation: Automation): Promise<Automation> {
+    await assertCanActivateAutomation(automation.business_id, () =>
+      automationsRepository.countActive(automation.business_id),
+    )
+
     let workflowId = automation.n8n_workflow_id
 
     if (!workflowId) {
