@@ -265,6 +265,7 @@ supabase/
     ├── telegram-webhook/           Mensajes entrantes de Telegram
     ├── whatsapp-webhook/           Mensajes entrantes de WhatsApp
     ├── google-calendar-oauth/      OAuth y creación de citas reales
+    ├── appointments/               Cancelación de citas (app y calendario)
     ├── stripe/ · stripe-webhook/   Checkout/portal y estado de suscripción real
     ├── knowledge/                  Ingesta y búsqueda (semántica o por palabra clave)
     ├── ai/                         Respuesta del agente (Claude/OpenAI/Ollama/reglas)
@@ -351,24 +352,32 @@ npm run lint      # eslint
 
 ## Estado
 
-**Funcionando:** autenticación, multi-tenancy con RLS, onboarding, perfil de
-negocio, generador de sistemas, dashboard, automatizaciones conectadas a n8n
-real (con rastro explicado paso a paso cuando fallan a mitad de camino, delay
-real entre pasos y resincronización que nunca se marca correcta si n8n
-falla), clasificador de intención (heurístico + Claude), agentes IA con
-editor de instrucciones, base de conocimiento con chunking (texto, preguntas
-frecuentes, archivo .txt y páginas web leídas de verdad, con vista de los
-fragmentos procesados), CRM con lista y kanban, puntuación de potencial en
-cada conversación real, derivación automática a una persona, campana de
-avisos, bandeja de conversaciones, marketplace de conexiones (Telegram
-conectable de verdad, Google Calendar con OAuth real y citas creadas en el
-calendario), email real vía Resend (directo y en campañas programadas de
+**Funcionando, con credenciales reales configuradas en producción:**
+autenticación, multi-tenancy con RLS, onboarding, perfil de negocio,
+generador de sistemas, dashboard, automatizaciones conectadas a un n8n real
+alojado en VPS propia (con rastro explicado paso a paso cuando fallan a
+mitad de camino, delay real entre pasos, resincronización que nunca se marca
+correcta si n8n falla, y el workflow remoto se borra de verdad al borrar la
+automatización), respuesta de agentes con modelos reales (Claude y OpenAI,
+según lo que cada agente tenga configurado), base de conocimiento con
+búsqueda semántica real (embeddings + Qdrant, con fallback honesto a
+palabra clave sobre Postgres si el proveedor falla), CRM con lista y kanban,
+puntuación de potencial en cada conversación real, derivación automática a
+una persona, campana de avisos, bandeja de conversaciones, marketplace de
+conexiones (Telegram conectable de verdad, con notas de voz de clientes
+transcritas — Whisper — y respuestas del agente enviadas también como nota
+de voz — TTS autoalojado con Piper, gratis; Google Calendar con OAuth real,
+app publicada en producción, citas creadas y canceladas en el calendario),
+email real vía Resend (directo y en campañas programadas de
 recordatorio/reactivación), facturación con Stripe (checkout, portal y
-webhooks) cuando hay credenciales, analíticas y panel de administración.
+webhooks) con claves y precios reales, monitorización de errores de las
+Edge Functions con Sentry, analíticas y panel de administración.
 
-**Pendiente por credenciales o trámite externo, con estado honesto mientras
-tanto:** llamadas a modelos de IA sin clave configurada (motor de reglas
-determinista de respaldo), búsqueda semántica sin Qdrant/OpenAI configurados
-(cae a palabra clave sobre Postgres), Stripe sin sus claves/Price ID, y
-WhatsApp — fuera del marketplace por ahora, arquitectura lista pero sin
-formulario de conexión mientras el producto se centra en Telegram.
+**Pendiente por trámite externo, con estado honesto mientras tanto:**
+WhatsApp — fuera del marketplace por ahora (backend y modelo de datos
+listos: `whatsapp-webhook`, `channels`), sin formulario de conexión mientras
+el producto se centra en Telegram, porque WhatsApp Business API exige un
+trámite de verificación de empresa con Meta que solo puede abrir el propio
+negocio. Instagram y Facebook, igual: sin conexión real todavía, sin fingir
+que la hay. Sin ninguna credencial de IA configurada, un negocio cae al
+motor de reglas determinista en vez de fallar.
