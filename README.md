@@ -379,8 +379,10 @@ de voz — TTS autoalojado con Piper, gratis; Google Calendar con OAuth real,
 app publicada en producción, citas creadas y canceladas en el calendario),
 email real vía Resend (directo y en campañas programadas de
 recordatorio/reactivación), facturación con Stripe (checkout, portal y
-webhooks) con claves y precios reales, monitorización de errores de las
-Edge Functions con Sentry, analíticas y panel de administración.
+webhooks) con claves y precios reales, monitorización de errores tanto de
+las Edge Functions como del frontend con Sentry (`Sentry.ErrorBoundary`
+evita la pantalla en blanco ante un fallo de React y reporta el error),
+analíticas y panel de administración.
 
 **Pendiente por trámite externo, con estado honesto mientras tanto:**
 WhatsApp — fuera del marketplace por ahora (backend y modelo de datos
