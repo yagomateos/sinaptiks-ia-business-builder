@@ -27,6 +27,13 @@ import { useBusiness } from '@/features/businesses/business-context'
 import { firstName, formatRelative, greeting } from '@/lib/utils'
 import { AutomationStatusBadge } from '@/features/automations/automation-status-badge'
 
+// leadsRepository.list/conversationsRepository.list limitan a 200 filas por
+// defecto (para que la bandeja o el CRM no se ralenticen con miles de
+// contactos) — pero aquí se cuentan de verdad (total, no leídos, sin
+// contactar...), así que un límite bajo daría una cifra falsa en cuanto un
+// negocio creciera. Se pide explícitamente un techo mucho más generoso.
+const DASHBOARD_ROW_LIMIT = 5000
+
 export function DashboardPage() {
   const { profile } = useAuth()
   const { activeBusiness } = useBusiness()
@@ -34,13 +41,13 @@ export function DashboardPage() {
 
   const leadsQuery = useQuery({
     queryKey: ['leads', businessId],
-    queryFn: () => leadsRepository.list(businessId),
+    queryFn: () => leadsRepository.list(businessId, {}, { limit: DASHBOARD_ROW_LIMIT }),
     enabled: Boolean(businessId),
   })
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations', businessId],
-    queryFn: () => conversationsRepository.list(businessId),
+    queryFn: () => conversationsRepository.list(businessId, undefined, { limit: DASHBOARD_ROW_LIMIT }),
     enabled: Boolean(businessId),
   })
 

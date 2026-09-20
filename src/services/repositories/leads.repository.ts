@@ -16,13 +16,32 @@ export type LeadDraft = Omit<
 > &
   Partial<Pick<Lead, 'potential_score' | 'potential_label' | 'scored_at' | 'score_signals'>>
 
+export interface ListPage {
+  limit?: number
+  offset?: number
+}
+
+const DEFAULT_LIST_LIMIT = 200
+
 export const leadsRepository = {
-  async list(businessId: UUID, filters: LeadFilters = {}): Promise<Lead[]> {
+  /**
+   * Antes esto traía TODAS las filas de golpe, sin límite — un negocio con
+   * miles de contactos iba a notar la pantalla cada vez más lenta (y, en el
+   * límite, colgar la pestaña). `limit` por defecto cubre de sobra cualquier
+   * negocio de hoy; quien necesite ver más allá pide la página siguiente con
+   * `offset`, y quien necesite de verdad todas las filas (la exportación de
+   * datos) pide un límite explícito más alto.
+   */
+  async list(businessId: UUID, filters: LeadFilters = {}, page: ListPage = {}): Promise<Lead[]> {
+    const limit = page.limit ?? DEFAULT_LIST_LIMIT
+    const offset = page.offset ?? 0
+
     let query = supabase
       .from('leads')
       .select('*')
       .eq('business_id', businessId)
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (filters.stage && filters.stage !== 'todos') {
       query = query.eq('stage', filters.stage)

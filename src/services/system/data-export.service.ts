@@ -21,6 +21,12 @@ import { subscriptionsRepository } from '@/services/repositories/subscriptions.r
 import { integrationsRepository } from '@/services/repositories/integrations.repository'
 import type { UUID } from '@/domain/types'
 
+// leadsRepository.list/conversationsRepository.list limitan a 200 filas por
+// defecto (para que la pantalla no se ralentice con miles de contactos) —
+// una exportación de verdad quiere todo lo que sea razonable llevarse en un
+// único JSON, así que pide explícitamente muchas más.
+const EXPORT_ROW_LIMIT = 5000
+
 export const dataExportService = {
   async exportBusiness(businessId: UUID): Promise<Record<string, unknown>> {
     const [business, businessProfile, services, leads, conversations, automations, agents, integrations, subscription] =
@@ -28,8 +34,8 @@ export const dataExportService = {
         businessesRepository.getById(businessId),
         businessProfileRepository.get(businessId),
         businessProfileRepository.listServices(businessId),
-        leadsRepository.list(businessId),
-        conversationsRepository.list(businessId, 'todas'),
+        leadsRepository.list(businessId, {}, { limit: EXPORT_ROW_LIMIT }),
+        conversationsRepository.list(businessId, 'todas', { limit: EXPORT_ROW_LIMIT }),
         automationsRepository.list(businessId, 'todas'),
         agentsRepository.list(businessId),
         integrationsRepository.list(businessId),

@@ -13,16 +13,29 @@ export interface ConversationWithLead extends Conversation {
   lead: Lead | null
 }
 
+const DEFAULT_LIST_LIMIT = 200
+
 export const conversationsRepository = {
+  /**
+   * Antes traía TODAS las conversaciones de golpe, sin límite — la bandeja de
+   * un negocio con mucho historial iba a notar la pantalla cada vez más
+   * lenta. `limit` por defecto cubre de sobra un negocio de hoy; quien
+   * necesite más allá pide la página siguiente con `offset`.
+   */
   async list(
     businessId: UUID,
     status?: ConversationStatus | 'todas',
+    page: { limit?: number; offset?: number } = {},
   ): Promise<ConversationWithLead[]> {
+    const limit = page.limit ?? DEFAULT_LIST_LIMIT
+    const offset = page.offset ?? 0
+
     let query = supabase
       .from('conversations')
       .select('*, leads(*)')
       .eq('business_id', businessId)
       .order('last_message_at', { ascending: false, nullsFirst: false })
+      .range(offset, offset + limit - 1)
 
     if (status && status !== 'todas') query = query.eq('status', status)
 

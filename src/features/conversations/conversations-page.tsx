@@ -29,6 +29,8 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'cerrada', label: 'Cerradas' },
 ]
 
+const PAGE_SIZE = 200
+
 export function ConversationsPage() {
   const { conversationId } = useParams()
   const navigate = useNavigate()
@@ -36,14 +38,18 @@ export function ConversationsPage() {
   const businessId = activeBusiness?.id ?? ''
 
   const [filter, setFilter] = useState<Filter>('todas')
+  const [limit, setLimit] = useState(PAGE_SIZE)
 
   const query = useQuery({
-    queryKey: ['conversations', businessId, filter],
-    queryFn: () => conversationsRepository.list(businessId, filter),
+    queryKey: ['conversations', businessId, filter, limit],
+    queryFn: () => conversationsRepository.list(businessId, filter, { limit }),
     enabled: Boolean(businessId),
   })
 
   const conversations = query.data ?? []
+  // Si vinieron menos filas de las pedidas, no hay más que cargar — si
+  // vinieron exactas al límite, puede (o no) haber más.
+  const mayHaveMore = conversations.length === limit
   const foundInList = conversations.find((c) => c.id === conversationId)
 
   // Un enlace directo (p. ej. desde la campana de avisos) puede apuntar a una
@@ -96,6 +102,19 @@ export function ConversationsPage() {
                 selected={conversation.id === conversationId}
               />
             ))}
+            {mayHaveMore && (
+              <div className="p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  loading={query.isFetching}
+                  onClick={() => setLimit((l) => l + PAGE_SIZE)}
+                >
+                  Cargar más
+                </Button>
+              </div>
+            )}
           </Card>
 
           {selected ? (

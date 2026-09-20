@@ -39,6 +39,8 @@ import { formatRelative } from '@/lib/utils'
 
 type View = 'lista' | 'kanban'
 
+const PAGE_SIZE = 200
+
 export function LeadsPage() {
   const { activeBusiness } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
@@ -47,14 +49,19 @@ export function LeadsPage() {
   const [search, setSearch] = useState('')
   const [stage, setStage] = useState<LeadStage | 'todos'>('todos')
   const [creating, setCreating] = useState(false)
+  const [limit, setLimit] = useState(PAGE_SIZE)
 
   const query = useQuery({
-    queryKey: ['leads', businessId, stage, search],
-    queryFn: () => leadsRepository.list(businessId, { stage, search }),
+    queryKey: ['leads', businessId, stage, search, limit],
+    queryFn: () => leadsRepository.list(businessId, { stage, search }, { limit }),
     enabled: Boolean(businessId),
   })
 
   const leads = query.data ?? []
+  // Si vinieron menos filas de las pedidas, no hay más que cargar — si
+  // vinieron exactas al límite, puede (o no) haber más, así que se ofrece
+  // seguir cargando en vez de asumir que eso es todo.
+  const mayHaveMore = leads.length === limit
 
   return (
     <div className="space-y-6">
@@ -135,10 +142,27 @@ export function LeadsPage() {
               : { label: 'Añadir contacto', onClick: () => setCreating(true) }
           }
         />
-      ) : view === 'lista' ? (
-        <LeadsList leads={leads} />
       ) : (
-        <LeadsKanban leads={leads} businessId={businessId} />
+        <>
+          {view === 'lista' ? (
+            <LeadsList leads={leads} />
+          ) : (
+            <LeadsKanban leads={leads} businessId={businessId} />
+          )}
+
+          {mayHaveMore && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                loading={query.isFetching}
+                onClick={() => setLimit((l) => l + PAGE_SIZE)}
+              >
+                Cargar más
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       <CreateLeadDialog
