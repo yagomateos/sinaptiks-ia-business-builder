@@ -62,6 +62,12 @@ export const mockN8nService: N8nService = {
     return setActive(id, false)
   },
 
+  async deleteWorkflow(id: string): Promise<void> {
+    await delay(160)
+    workflows.delete(id)
+    executions.delete(id)
+  },
+
   async executeWorkflow(id: string, payload = {}): Promise<N8nExecution> {
     await delay(400)
     const startedAt = new Date().toISOString()

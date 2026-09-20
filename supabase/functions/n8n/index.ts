@@ -87,6 +87,7 @@ Deno.serve(async (request) => {
 
     if (request.method === 'GET') return await getWorkflow(ctx, workflowId)
     if (request.method === 'PATCH') return await updateWorkflow(ctx, workflowId, request)
+    if (request.method === 'DELETE') return await removeWorkflow(ctx, workflowId)
 
     throw new HttpError(405, 'Método no permitido')
   } catch (error) {
@@ -260,6 +261,25 @@ async function recreateAndActivate(ctx: AuthContext, staleWorkflowId: string) {
     await ctx.db.from('automations').update({ sync_status: 'error', sync_error: message }).eq('id', stored.id)
     throw error
   }
+}
+
+/**
+ * Borra el workflow real en n8n. Se llama al borrar la automatización desde
+ * la app — sin esto, cada automatización eliminada dejaba su workflow vivo
+ * en n8n para siempre (inactivo, pero acumulando clutter sin límite).
+ */
+async function removeWorkflow(ctx: AuthContext, workflowId: string): Promise<Response> {
+  await assertAutomationAccess(ctx, workflowId)
+
+  try {
+    await n8n.remove(workflowId)
+  } catch (error) {
+    // Ya no existe en el motor: el objetivo ("que no quede nada en n8n") ya
+    // está cumplido, no es un fallo real.
+    if (!(error instanceof HttpError && error.status === 404)) throw error
+  }
+
+  return json({ id: workflowId, deleted: true })
 }
 
 async function getWorkflow(ctx: AuthContext, workflowId: string): Promise<Response> {

@@ -70,6 +70,9 @@ export const httpN8nService: N8nService = {
   deactivateWorkflow: (workflowId: string) =>
     call<N8nWorkflow>(`/n8n/workflows/${workflowId}/deactivate`, { method: 'POST' }),
 
+  deleteWorkflow: (workflowId: string) =>
+    call<void>(`/n8n/workflows/${workflowId}`, { method: 'DELETE' }),
+
   executeWorkflow: (workflowId: string, payload = {}) =>
     call<N8nExecution>(`/n8n/workflows/${workflowId}/execute`, {
       method: 'POST',

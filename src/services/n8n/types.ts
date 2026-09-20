@@ -33,6 +33,7 @@ export interface N8nService {
   updateWorkflow(workflowId: string, input: CreateWorkflowInput): Promise<N8nWorkflow>
   activateWorkflow(workflowId: string): Promise<N8nWorkflow>
   deactivateWorkflow(workflowId: string): Promise<N8nWorkflow>
+  deleteWorkflow(workflowId: string): Promise<void>
   executeWorkflow(workflowId: string, payload?: Record<string, unknown>): Promise<N8nExecution>
   getWorkflow(workflowId: string): Promise<N8nWorkflow | null>
   getWorkflowExecutions(workflowId: string, limit?: number): Promise<N8nExecution[]>
