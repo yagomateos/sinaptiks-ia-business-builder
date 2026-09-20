@@ -29,7 +29,7 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { isGoogleCalendarConfigured } from '../_shared/calendar/index.ts'
-import { assertBusinessAccess, authenticate, CORS_HEADERS, errorResponse, HttpError, json as jsonResponse } from '../_shared/auth.ts'
+import { assertBusinessAccess, authenticate, corsHeadersFor, errorResponse, HttpError, json as jsonResponse } from '../_shared/auth.ts'
 
 const CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
@@ -47,9 +47,15 @@ const admin = createClient(
   { auth: { persistSession: false } },
 )
 
+// A diferencia del resto de funciones, aquí no se envuelve la respuesta con
+// `applyCors()`: `/start` y `/callback` son navegaciones de navegador y
+// redirects de Google, nunca un `fetch()` sujeto a CORS — y mutar los
+// headers de un `Response.redirect()` es terreno más frágil de lo que
+// merece este ajuste. Solo `/mint-start-code` es un fetch real, y ya exige
+// sesión válida más pertenencia al negocio.
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: corsHeadersFor(request) })
   }
 
   const url = new URL(request.url)

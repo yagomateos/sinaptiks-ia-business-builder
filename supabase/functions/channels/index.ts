@@ -15,9 +15,10 @@
  * haya ya un formulario que las llame.
  */
 import {
+  applyCors,
   assertBusinessAccess,
   authenticate,
-  CORS_HEADERS,
+  corsHeadersFor,
   errorResponse,
   HttpError,
   json,
@@ -28,35 +29,39 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: corsHeadersFor(request) })
   }
 
-  try {
-    if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+  const response = await (async () => {
+    try {
+      if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
 
-    const ctx = await authenticate(request)
-    const url = new URL(request.url)
-    const segments = url.pathname.split('/').filter(Boolean)
-    const start = segments.indexOf('channels')
-    const operation = start >= 0 ? segments[start + 1] : undefined
+      const ctx = await authenticate(request)
+      const url = new URL(request.url)
+      const segments = url.pathname.split('/').filter(Boolean)
+      const start = segments.indexOf('channels')
+      const operation = start >= 0 ? segments[start + 1] : undefined
 
-    const body = await request.json()
+      const body = await request.json()
 
-    switch (operation) {
-      case 'connect-telegram':
-        return json(await connectTelegram(ctx, body))
-      case 'disconnect-telegram':
-        return json(await disconnectTelegram(ctx, body))
-      case 'connect-whatsapp':
-        return json(await connectWhatsApp(ctx, body))
-      case 'disconnect-whatsapp':
-        return json(await disconnectWhatsApp(ctx, body))
-      default:
-        throw new HttpError(404, 'Operación desconocida')
+      switch (operation) {
+        case 'connect-telegram':
+          return json(await connectTelegram(ctx, body))
+        case 'disconnect-telegram':
+          return json(await disconnectTelegram(ctx, body))
+        case 'connect-whatsapp':
+          return json(await connectWhatsApp(ctx, body))
+        case 'disconnect-whatsapp':
+          return json(await disconnectWhatsApp(ctx, body))
+        default:
+          throw new HttpError(404, 'Operación desconocida')
+      }
+    } catch (error) {
+      return errorResponse(error)
     }
-  } catch (error) {
-    return errorResponse(error)
-  }
+  })()
+
+  return applyCors(response, request)
 })
 
 /* ------------------------------------------------------------------ */

@@ -84,10 +84,58 @@ export async function assertAutomationAccess(
   return data.business_id
 }
 
+// Antes esto era un único valor fijo ('*' sin ALLOWED_ORIGIN configurado):
+// cualquier página web podía leer la respuesta de estas funciones si de
+// algún modo tenía el token de sesión de quien la visitara. Con
+// ALLOWED_ORIGINS configurada (lista separada por comas — hace falta más de
+// uno porque el desarrollo local apunta a este mismo proyecto desplegado,
+// no a uno aparte), solo se refleja el origen exacto de quien llama cuando
+// está en la lista. Sin configurar, se mantiene el '*' de siempre: nunca
+// rompe un entorno que todavía no la haya puesto.
+const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
+export function corsOriginFor(request: Request): string {
+  if (ALLOWED_ORIGINS.length === 0) return '*'
+  const origin = request.headers.get('origin') ?? ''
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+}
+
+export function corsHeadersFor(request: Request): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': corsOriginFor(request),
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    Vary: 'Origin',
+  }
+}
+
+/**
+ * Valor estático de respaldo — lo siguen usando los `json()` que se
+ * construyen en lo profundo de cada función, donde no siempre hay a mano el
+ * `Request` original. `applyCors()` corrige el header ya en la respuesta
+ * final antes de devolverla, así que este valor solo importa de verdad
+ * mientras ALLOWED_ORIGINS no esté configurada.
+ */
 export const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGINS.length === 1 ? ALLOWED_ORIGINS[0] : '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+}
+
+/**
+ * Corrige el `Access-Control-Allow-Origin` de una respuesta ya construida
+ * para que refleje el origen real de quien llama — se aplica una vez, en el
+ * borde de cada función (`Deno.serve`), así que no hace falta tocar cada
+ * `json()`/`errorResponse()` de más adentro para que el límite por origen
+ * sea real en la respuesta que de verdad ve el navegador.
+ */
+export function applyCors(response: Response, request: Request): Response {
+  response.headers.set('Access-Control-Allow-Origin', corsOriginFor(request))
+  response.headers.set('Vary', 'Origin')
+  return response
 }
 
 export function json(body: unknown, status = 200): Response {

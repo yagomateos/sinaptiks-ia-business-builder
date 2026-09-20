@@ -9,41 +9,45 @@
  * webs, y traer contenido arbitrario de terceros es mejor hacerlo donde se
  * pueda controlar qué destinos se permiten).
  */
-import { assertBusinessAccess, authenticate, CORS_HEADERS, errorResponse, HttpError, json } from '../_shared/auth.ts'
+import { applyCors, assertBusinessAccess, authenticate, corsHeadersFor, errorResponse, HttpError, json } from '../_shared/auth.ts'
 
 const MAX_CONTENT_LENGTH = 20_000
 const FETCH_TIMEOUT_MS = 10_000
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: corsHeadersFor(request) })
   }
 
-  try {
-    if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+  const response = await (async () => {
+    try {
+      if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
 
-    const ctx = await authenticate(request)
-    const body = await request.json()
-    const { businessId, url } = (body ?? {}) as { businessId?: string; url?: string }
+      const ctx = await authenticate(request)
+      const body = await request.json()
+      const { businessId, url } = (body ?? {}) as { businessId?: string; url?: string }
 
-    if (!businessId) throw new HttpError(400, 'Falta el negocio')
-    if (!url?.trim()) throw new HttpError(400, 'Falta la dirección')
+      if (!businessId) throw new HttpError(400, 'Falta el negocio')
+      if (!url?.trim()) throw new HttpError(400, 'Falta la dirección')
 
-    await assertBusinessAccess(ctx, businessId)
+      await assertBusinessAccess(ctx, businessId)
 
-    const target = parseAndGuardUrl(url.trim())
-    await assertPublicHost(target.hostname)
-    const html = await fetchWithTimeout(target)
-    const content = htmlToText(html).slice(0, MAX_CONTENT_LENGTH)
+      const target = parseAndGuardUrl(url.trim())
+      await assertPublicHost(target.hostname)
+      const html = await fetchWithTimeout(target)
+      const content = htmlToText(html).slice(0, MAX_CONTENT_LENGTH)
 
-    if (!content.trim()) {
-      throw new HttpError(422, 'Esa página no tiene texto legible que extraer')
+      if (!content.trim()) {
+        throw new HttpError(422, 'Esa página no tiene texto legible que extraer')
+      }
+
+      return json({ content })
+    } catch (error) {
+      return errorResponse(error)
     }
+  })()
 
-    return json({ content })
-  } catch (error) {
-    return errorResponse(error)
-  }
+  return applyCors(response, request)
 })
 
 /**

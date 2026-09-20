@@ -13,9 +13,10 @@
  * ruta cae automáticamente al motor de reglas en el cliente.
  */
 import {
+  applyCors,
   assertBusinessAccess,
   authenticate,
-  CORS_HEADERS,
+  corsHeadersFor,
   errorResponse,
   HttpError,
   json,
@@ -30,47 +31,51 @@ import { assertRateLimit } from '../_shared/rate-limit.ts'
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: corsHeadersFor(request) })
   }
 
-  try {
-    if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+  const response = await (async () => {
+    try {
+      if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
 
-    const ctx = await authenticate(request)
+      const ctx = await authenticate(request)
 
-    // Todas las operaciones de aquí llaman a un modelo real (Claude, OpenAI
-    // u Ollama) — sin límite, una cuenta autenticada podría vaciar la clave
-    // de pago con un simple bucle. 30 peticiones/minuto de sobra para el uso
-    // real (onboarding, simulador de conversación, respuestas reales) sin
-    // dejar pasar un abuso.
-    await assertRateLimit(ctx, 'ai', 30, 60)
+      // Todas las operaciones de aquí llaman a un modelo real (Claude, OpenAI
+      // u Ollama) — sin límite, una cuenta autenticada podría vaciar la clave
+      // de pago con un simple bucle. 30 peticiones/minuto de sobra para el uso
+      // real (onboarding, simulador de conversación, respuestas reales) sin
+      // dejar pasar un abuso.
+      await assertRateLimit(ctx, 'ai', 30, 60)
 
-    const url = new URL(request.url)
-    const segments = url.pathname.split('/').filter(Boolean)
-    const start = segments.indexOf('ai')
-    const operation = start >= 0 ? segments[start + 1] : undefined
+      const url = new URL(request.url)
+      const segments = url.pathname.split('/').filter(Boolean)
+      const start = segments.indexOf('ai')
+      const operation = start >= 0 ? segments[start + 1] : undefined
 
-    const body = await request.json()
+      const body = await request.json()
 
-    switch (operation) {
-      case 'analyze-business':
-        return json(await analyzeBusiness(ctx, body))
-      case 'business-strategy':
-        return json(await businessStrategy(ctx, body))
-      case 'generate-prompt':
-        return json(await generatePrompt(ctx, body))
-      case 'classify-lead':
-        return json(await classifyLead(ctx, body))
-      case 'summarize-conversation':
-        return json(await summarizeConversation(ctx, body))
-      case 'generate-reply':
-        return json(await generateReply(ctx, body))
-      default:
-        throw new HttpError(404, 'Esa operación no está disponible todavía')
+      switch (operation) {
+        case 'analyze-business':
+          return json(await analyzeBusiness(ctx, body))
+        case 'business-strategy':
+          return json(await businessStrategy(ctx, body))
+        case 'generate-prompt':
+          return json(await generatePrompt(ctx, body))
+        case 'classify-lead':
+          return json(await classifyLead(ctx, body))
+        case 'summarize-conversation':
+          return json(await summarizeConversation(ctx, body))
+        case 'generate-reply':
+          return json(await generateReply(ctx, body))
+        default:
+          throw new HttpError(404, 'Esa operación no está disponible todavía')
+      }
+    } catch (error) {
+      return errorResponse(error)
     }
-  } catch (error) {
-    return errorResponse(error)
-  }
+  })()
+
+  return applyCors(response, request)
 })
 
 /* ------------------------------------------------------------------ */

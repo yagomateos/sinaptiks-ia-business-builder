@@ -13,9 +13,10 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
+  applyCors,
   assertBusinessAccess,
   authenticate,
-  CORS_HEADERS,
+  corsHeadersFor,
   errorResponse,
   HttpError,
   json,
@@ -42,26 +43,30 @@ interface UpsertRecord {
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: corsHeadersFor(request) })
   }
 
-  try {
-    const ctx = await authenticate(request)
-    const url = new URL(request.url)
-    const segments = url.pathname.split('/').filter(Boolean)
-    const start = segments.indexOf('knowledge')
-    const path = start >= 0 ? segments.slice(start + 1) : segments
+  const response = await (async () => {
+    try {
+      const ctx = await authenticate(request)
+      const url = new URL(request.url)
+      const segments = url.pathname.split('/').filter(Boolean)
+      const start = segments.indexOf('knowledge')
+      const path = start >= 0 ? segments.slice(start + 1) : segments
 
-    if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+      if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
 
-    if (path[0] === 'upsert') return await handleUpsert(ctx, request)
-    if (path[0] === 'search') return await handleSearch(ctx, request)
-    if (path[0] === 'remove') return await handleRemove(ctx, request)
+      if (path[0] === 'upsert') return await handleUpsert(ctx, request)
+      if (path[0] === 'search') return await handleSearch(ctx, request)
+      if (path[0] === 'remove') return await handleRemove(ctx, request)
 
-    throw new HttpError(404, 'Ruta desconocida')
-  } catch (error) {
-    return errorResponse(error)
-  }
+      throw new HttpError(404, 'Ruta desconocida')
+    } catch (error) {
+      return errorResponse(error)
+    }
+  })()
+
+  return applyCors(response, request)
 })
 
 async function handleUpsert(ctx: AuthContext, request: Request): Promise<Response> {

@@ -15,10 +15,11 @@
  *   GET    /workflows/:id/executions      historial
  */
 import {
+  applyCors,
   assertAutomationAccess,
   assertBusinessAccess,
   authenticate,
-  CORS_HEADERS,
+  corsHeadersFor,
   errorResponse,
   HttpError,
   json,
@@ -59,40 +60,44 @@ const SAMPLE_CONTACT = {
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: corsHeadersFor(request) })
   }
 
-  try {
-    const ctx = await authenticate(request)
-    const url = new URL(request.url)
+  const response = await (async () => {
+    try {
+      const ctx = await authenticate(request)
+      const url = new URL(request.url)
 
-    // /functions/v1/n8n/workflows/:id/:action → ['workflows', id, action]
-    const segments = url.pathname.split('/').filter(Boolean)
-    const start = segments.indexOf('n8n')
-    const path = start >= 0 ? segments.slice(start + 1) : segments
+      // /functions/v1/n8n/workflows/:id/:action → ['workflows', id, action]
+      const segments = url.pathname.split('/').filter(Boolean)
+      const start = segments.indexOf('n8n')
+      const path = start >= 0 ? segments.slice(start + 1) : segments
 
-    if (path[0] !== 'workflows') throw new HttpError(404, 'Ruta desconocida')
+      if (path[0] !== 'workflows') throw new HttpError(404, 'Ruta desconocida')
 
-    const [, workflowId, action] = path
+      const [, workflowId, action] = path
 
-    if (!workflowId) {
-      if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
-      return await createWorkflow(ctx, request)
+      if (!workflowId) {
+        if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+        return await createWorkflow(ctx, request)
+      }
+
+      if (action === 'activate') return await setActive(ctx, workflowId, true)
+      if (action === 'deactivate') return await setActive(ctx, workflowId, false)
+      if (action === 'execute') return await executeOnce(ctx, workflowId, request)
+      if (action === 'executions') return await listExecutions(ctx, workflowId, url)
+
+      if (request.method === 'GET') return await getWorkflow(ctx, workflowId)
+      if (request.method === 'PATCH') return await updateWorkflow(ctx, workflowId, request)
+      if (request.method === 'DELETE') return await removeWorkflow(ctx, workflowId)
+
+      throw new HttpError(405, 'Método no permitido')
+    } catch (error) {
+      return errorResponse(error)
     }
+  })()
 
-    if (action === 'activate') return await setActive(ctx, workflowId, true)
-    if (action === 'deactivate') return await setActive(ctx, workflowId, false)
-    if (action === 'execute') return await executeOnce(ctx, workflowId, request)
-    if (action === 'executions') return await listExecutions(ctx, workflowId, url)
-
-    if (request.method === 'GET') return await getWorkflow(ctx, workflowId)
-    if (request.method === 'PATCH') return await updateWorkflow(ctx, workflowId, request)
-    if (request.method === 'DELETE') return await removeWorkflow(ctx, workflowId)
-
-    throw new HttpError(405, 'Método no permitido')
-  } catch (error) {
-    return errorResponse(error)
-  }
+  return applyCors(response, request)
 })
 
 /* ------------------------------------------------------------------ */
