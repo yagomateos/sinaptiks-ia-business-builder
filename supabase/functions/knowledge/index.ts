@@ -24,6 +24,7 @@ import {
 import { embeddingsProvider } from '../_shared/embeddings/index.ts'
 import { getVectorStoreProvider, isSemanticSearchConfigured } from '../_shared/vector-store/index.ts'
 import { searchKnowledgeChunks } from '../_shared/knowledge-search.ts'
+import { assertRateLimit } from '../_shared/rate-limit.ts'
 
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -70,6 +71,11 @@ async function handleUpsert(ctx: AuthContext, request: Request): Promise<Respons
 
   const businessId = records[0].businessId
   await assertBusinessAccess(ctx, businessId)
+
+  // Cada fragmento indexado es una llamada real a embeddings (OpenAI) más
+  // una escritura en Qdrant — ambas cuestan dinero. 20 lotes/minuto cubre de
+  // sobra subir varios documentos seguidos sin dejar pasar un bucle.
+  await assertRateLimit(ctx, 'knowledge-upsert', 20, 60)
 
   // Solo se autoriza el negocio de records[0] — si algún otro record trajera
   // un businessId distinto, se indexaría contenido arbitrario bajo un negocio

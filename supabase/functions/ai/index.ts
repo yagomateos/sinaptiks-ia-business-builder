@@ -26,6 +26,7 @@ import { complete as completeOpenAi } from '../_shared/openai-client.ts'
 import { complete as completeOllama } from '../_shared/ollama-client.ts'
 import { AGENT_TYPE_INFO, describeBusiness } from '../_shared/business-context.ts'
 import { searchKnowledge } from '../_shared/knowledge-search.ts'
+import { assertRateLimit } from '../_shared/rate-limit.ts'
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -36,6 +37,14 @@ Deno.serve(async (request) => {
     if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
 
     const ctx = await authenticate(request)
+
+    // Todas las operaciones de aquí llaman a un modelo real (Claude, OpenAI
+    // u Ollama) — sin límite, una cuenta autenticada podría vaciar la clave
+    // de pago con un simple bucle. 30 peticiones/minuto de sobra para el uso
+    // real (onboarding, simulador de conversación, respuestas reales) sin
+    // dejar pasar un abuso.
+    await assertRateLimit(ctx, 'ai', 30, 60)
+
     const url = new URL(request.url)
     const segments = url.pathname.split('/').filter(Boolean)
     const start = segments.indexOf('ai')
