@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Check, CreditCard, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
+import { Building2, Check, CreditCard, Download, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,8 @@ import { businessesRepository } from '@/services/repositories/businesses.reposit
 import { businessProfileRepository } from '@/services/repositories/business-profile.repository'
 import { subscriptionsRepository } from '@/services/repositories/subscriptions.repository'
 import { stripeService } from '@/services/billing/stripe.service'
+import { businessService } from '@/services/system/business.service'
+import { dataExportService } from '@/services/system/data-export.service'
 import { PLAN_LIMITS } from '@/domain/catalog/plan-limits'
 import {
   BRAND_VOICE_LABELS,
@@ -108,7 +111,8 @@ export function SettingsPage() {
 
 function BusinessSettings({ businessId, canManage }: { businessId: string; canManage: boolean }) {
   const queryClient = useQueryClient()
-  const { refresh } = useBusiness()
+  const navigate = useNavigate()
+  const { role, refresh } = useBusiness()
   const query = useQuery({
     queryKey: ['business-profile', businessId],
     queryFn: () => businessProfileRepository.get(businessId),
@@ -138,6 +142,36 @@ function BusinessSettings({ businessId, canManage }: { businessId: string; canMa
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido guardar.'),
+  })
+
+  const [confirmingDeleteBusiness, setConfirmingDeleteBusiness] = useState(false)
+
+  const exportData = useMutation({
+    mutationFn: () => dataExportService.exportBusiness(businessId),
+    onSuccess: (data) => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const nameSlug = (draft?.business_name ?? businessId).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+      link.download = `sinaptkis-${nameSlug}-${new Date().toISOString().slice(0, 10)}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success('Descarga lista')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido preparar la descarga.'),
+  })
+
+  const removeBusiness = useMutation({
+    mutationFn: () => businessService.remove(businessId),
+    onSuccess: async () => {
+      await refresh()
+      toast.success('Negocio eliminado')
+      navigate('/app', { replace: true })
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido eliminar el negocio.'),
   })
 
   if (query.isLoading) return <LoadingState />
@@ -302,6 +336,58 @@ function BusinessSettings({ businessId, canManage }: { businessId: string; canMa
           Guardar cambios
         </Button>
       )}
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Tus datos</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Exportar todos tus datos</p>
+              <p className="text-xs text-muted-foreground">
+                Un archivo con tu negocio, contactos, conversaciones, citas, automatizaciones y
+                agentes — tal cual están hoy.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" loading={exportData.isPending} onClick={() => exportData.mutate()}>
+              <Download />
+              Descargar
+            </Button>
+          </div>
+
+          {role === 'owner' && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+              <div>
+                <p className="text-sm font-medium text-destructive">Eliminar este negocio</p>
+                <p className="text-xs text-muted-foreground">
+                  Borra el negocio y todo lo que contiene — contactos, conversaciones,
+                  automatizaciones (y sus workflows en el motor), agentes, citas. No se puede
+                  deshacer.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive text-destructive hover:bg-destructive/10"
+                onClick={() => setConfirmingDeleteBusiness(true)}
+              >
+                <Trash2 />
+                Eliminar negocio
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={confirmingDeleteBusiness}
+        onOpenChange={setConfirmingDeleteBusiness}
+        title="Eliminar negocio"
+        description={`Vas a eliminar "${draft.business_name}" y todos sus datos: contactos, conversaciones, automatizaciones, agentes y citas. No se puede deshacer.`}
+        loading={removeBusiness.isPending}
+        onConfirm={() => removeBusiness.mutate()}
+      />
     </div>
   )
 }
