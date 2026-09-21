@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2, Check, CreditCard, Download, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -58,12 +58,41 @@ const ROLE_LABELS: Record<MemberRole, string> = {
 export function SettingsPage() {
   const { activeBusiness, canManage } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
+  const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const checkout = searchParams.get('checkout')
+
+  // Stripe redirige aquí con ?checkout=success|cancel al volver del
+  // checkout — antes esto se ignoraba del todo: la pestaña seguía en
+  // "Negocio" (nunca saltaba a Facturación) y la suscripción, aunque el
+  // webhook ya la hubiera actualizado, podía seguir en caché con el plan
+  // viejo hasta que algo la invalidara. Un solo efecto, una vez, resuelve
+  // las dos cosas y limpia el parámetro para que un refresco de página no
+  // repita el aviso.
+  useEffect(() => {
+    if (!checkout) return
+
+    if (checkout === 'success') {
+      toast.success('Pago confirmado — tu plan ya está actualizado')
+      queryClient.invalidateQueries({ queryKey: ['subscription', businessId] })
+    } else if (checkout === 'cancel') {
+      toast.info('Pago cancelado, no se ha hecho ningún cargo')
+    }
+
+    setSearchParams((params) => {
+      params.delete('checkout')
+      return params
+    }, { replace: true })
+    // Solo debe repetirse cuando cambia el propio parámetro de la URL, no
+    // cada vez que cambien queryClient/businessId/setSearchParams.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkout])
 
   return (
     <div className="space-y-6">
       <PageHeader title="Ajustes" description="Tu negocio, tus servicios y tu equipo." />
 
-      <Tabs defaultValue="negocio">
+      <Tabs defaultValue={checkout ? 'facturacion' : 'negocio'}>
         <TabsList>
           <TabsTrigger value="negocio">
             <Building2 />
