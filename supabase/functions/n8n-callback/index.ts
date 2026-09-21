@@ -19,7 +19,7 @@ import {
 } from '../_shared/conversation-pipeline.ts'
 import { sendTelegramMessage } from '../_shared/telegram-client.ts'
 import { sendWhatsAppMessage } from '../_shared/whatsapp-client.ts'
-import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
+import { isBusinessEmailConfigured, sendBusinessEmail } from '../_shared/email.ts'
 import { automationEmailHtml } from '../_shared/email-templates.ts'
 import { bookCalendarAppointment } from '../_shared/appointment-booking.ts'
 import { zonedWallClockToUtc } from '../_shared/timezone.ts'
@@ -426,13 +426,13 @@ async function sendAutomationEmail(
   automationName: string,
   bodyText: string,
 ): Promise<string> {
-  if (!isResendConfigured) {
+  if (!(await isBusinessEmailConfigured(admin, businessId))) {
     return await recordPendingChannel(businessId, automationId, automationName, actionType)
   }
 
   const businessName = await getBusinessName(admin, businessId)
 
-  await sendEmail({
+  await sendBusinessEmail(admin, businessId, {
     to,
     subject: automationName,
     html: automationEmailHtml({ businessName, heading: automationName, bodyText }),
@@ -549,7 +549,7 @@ async function sendEmailBroadcast(
   trigger: { type: string; config?: Record<string, unknown> },
   automationName: string,
 ): Promise<string> {
-  if (!isResendConfigured) {
+  if (!(await isBusinessEmailConfigured(admin, businessId))) {
     return await recordPendingChannel(businessId, automationId, automationName, actionType)
   }
 
@@ -578,7 +578,7 @@ async function sendEmailBroadcast(
   let sent = 0
   for (const lead of due) {
     try {
-      await sendEmail({
+      await sendBusinessEmail(admin, businessId, {
         to: lead.email!,
         subject: automationName,
         html: automationEmailHtml({ businessName, heading: automationName, bodyText: bodyText(lead.full_name) }),

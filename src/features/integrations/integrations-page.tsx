@@ -166,6 +166,37 @@ export function IntegrationsPage() {
   )
 }
 
+/**
+ * Arranca el mismo baile de OAuth de Google para cualquiera de los dos flujos
+ * que lo usan (Calendar, Gmail) — cambia solo el slug de la Edge Function.
+ * El JWT de sesión no viaja por la URL: se cambia aquí, con un fetch
+ * autenticado normal, por un código de un solo uso y 2 minutos de vida — eso
+ * es lo único que lleva la navegación del navegador.
+ */
+async function startGoogleOAuth(functionSlug: 'google-calendar-oauth' | 'gmail-oauth', businessId: string) {
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
+  if (!apiBaseUrl) throw new Error('Todavía no hay un backend conectado para gestionar canales.')
+
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('Sesión no válida')
+
+  const mintResponse = await fetch(`${apiBaseUrl}/${functionSlug}/mint-start-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ businessId }),
+  })
+  if (!mintResponse.ok) {
+    const payload = await mintResponse.json().catch(() => ({}) as { error?: string })
+    throw new Error(payload.error ?? 'No hemos podido iniciar la conexión con Google.')
+  }
+  const { code } = (await mintResponse.json()) as { code: string }
+
+  // Navegación real del navegador, no un fetch: Google necesita redirigir de
+  // verdad al consentimiento y volver — un XHR no puede llevar ahí.
+  window.location.href = `${apiBaseUrl}/${functionSlug}/start?businessId=${businessId}&code=${code}`
+}
+
 function IntegrationCard({
   provider,
   integration,
@@ -188,6 +219,11 @@ function IntegrationCard({
   // Google Calendar usa OAuth de verdad (google-calendar-oauth Edge
   // Function) en vez del placeholder "conectando" del resto.
   const isGoogleCalendar = provider === 'google_calendar'
+  // Mismo patrón que Calendar (gmail-oauth Edge Function): un negocio que
+  // conecta su Gmail puede mandar email a cualquier destinatario real desde
+  // el primer día, sin la restricción de Resend en modo de prueba (solo
+  // entrega a la dirección de la propia cuenta de Resend).
+  const isGmail = provider === 'gmail'
   // Igual que el motor: la voz la gestiona la plataforma (hoy Piper
   // autoalojado), no cada negocio — no hay nada que el negocio deba
   // "conectar" aquí, y ya está activo de verdad.
@@ -223,33 +259,13 @@ function IntegrationCard({
   })
 
   const connectGoogleCalendar = useMutation({
-    mutationFn: async () => {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
-      if (!apiBaseUrl) throw new Error('Todavía no hay un backend conectado para gestionar canales.')
+    mutationFn: () => startGoogleOAuth('google-calendar-oauth', businessId),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido iniciar la conexión.'),
+  })
 
-      const { data } = await supabase.auth.getSession()
-      const token = data.session?.access_token
-      if (!token) throw new Error('Sesión no válida')
-
-      // El JWT de sesión no viaja por la URL: se cambia aquí, con un fetch
-      // autenticado normal, por un código de un solo uso y 2 minutos de
-      // vida — eso es lo único que lleva la navegación del navegador.
-      const mintResponse = await fetch(`${apiBaseUrl}/google-calendar-oauth/mint-start-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ businessId }),
-      })
-      if (!mintResponse.ok) {
-        const payload = await mintResponse.json().catch(() => ({}) as { error?: string })
-        throw new Error(payload.error ?? 'No hemos podido iniciar la conexión con Google.')
-      }
-      const { code } = (await mintResponse.json()) as { code: string }
-
-      // Navegación real del navegador, no un fetch: Google necesita
-      // redirigir de verdad al consentimiento y volver — un XHR no puede
-      // llevar al usuario a esa pantalla.
-      window.location.href = `${apiBaseUrl}/google-calendar-oauth/start?businessId=${businessId}&code=${code}`
-    },
+  const connectGmail = useMutation({
+    mutationFn: () => startGoogleOAuth('gmail-oauth', businessId),
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido iniciar la conexión.'),
   })
@@ -291,12 +307,12 @@ function IntegrationCard({
         {integration?.last_error && (
           <p className="mt-2 text-xs text-destructive">{integration.last_error}</p>
         )}
-        {status === 'conectando' && !isTelegram && !isGoogleCalendar && (
+        {status === 'conectando' && !isTelegram && !isGoogleCalendar && !isGmail && (
           <p className="mt-2 text-xs text-muted-foreground">
             Te avisaremos en cuanto esté disponible.
           </p>
         )}
-        {status === 'conectando' && isGoogleCalendar && (
+        {status === 'conectando' && (isGoogleCalendar || isGmail) && (
           <p className="mt-2 text-xs text-muted-foreground">Autorizando con Google…</p>
         )}
       </div>
@@ -341,6 +357,22 @@ function IntegrationCard({
                   .setStatus(businessId, provider, 'no_conectado')
                   .then(() => queryClient.invalidateQueries({ queryKey: ['integrations', businessId] }))
               : connectGoogleCalendar.mutate()
+          }
+        >
+          {status === 'conectado' ? 'Desconectar' : 'Conectar con Google'}
+        </Button>
+      ) : isGmail ? (
+        <Button
+          variant={status === 'conectado' ? 'outline' : 'default'}
+          size="sm"
+          className="mt-4 w-full"
+          loading={connectGmail.isPending}
+          onClick={() =>
+            status === 'conectado'
+              ? integrationsRepository
+                  .setStatus(businessId, provider, 'no_conectado')
+                  .then(() => queryClient.invalidateQueries({ queryKey: ['integrations', businessId] }))
+              : connectGmail.mutate()
           }
         >
           {status === 'conectado' ? 'Desconectar' : 'Conectar con Google'}

@@ -17,7 +17,7 @@ import { scoreLead, type ScoredMessage } from './lead-scoring.ts'
 import { generateRuleBasedReply, type RulesReplyFaq } from './rules-reply.ts'
 import { isConfigured as isN8nConfigured, n8n } from './n8n-client.ts'
 import { webhookPathFor } from './workflow-builder.ts'
-import { isResendConfigured, sendEmail } from './resend-client.ts'
+import { isBusinessEmailConfigured, sendBusinessEmail } from './email.ts'
 import { appointmentRequestEmailHtml } from './email-templates.ts'
 import { searchKnowledge } from './knowledge-search.ts'
 import { bookCalendarAppointment } from './appointment-booking.ts'
@@ -458,7 +458,7 @@ async function sendAppointmentEmail(
     canal: string
   },
 ): Promise<void> {
-  if (!isResendConfigured) return
+  if (!(await isBusinessEmailConfigured(admin, businessId))) return
 
   try {
     const { data: profile } = await admin
@@ -480,7 +480,7 @@ async function sendAppointmentEmail(
 
     if (!to) return
 
-    await sendEmail({
+    await sendBusinessEmail(admin, businessId, {
       to,
       subject: `Nueva solicitud de cita — ${details.nombre}`,
       html: appointmentRequestEmailHtml({

@@ -391,9 +391,13 @@ una persona, campana de avisos, bandeja de conversaciones, marketplace de
 conexiones (Telegram conectable de verdad, con notas de voz de clientes
 transcritas — Whisper — y respuestas del agente enviadas también como nota
 de voz — TTS autoalojado con Piper, gratis; Google Calendar con OAuth real,
-app publicada en producción, citas creadas y canceladas en el calendario),
-email real vía Resend (directo y en campañas programadas de
-recordatorio/reactivación), facturación con Stripe (checkout, portal y
+app publicada en producción, citas creadas y canceladas en el calendario;
+Gmail con OAuth real — mismo patrón y credenciales que Calendar — para
+mandar email a cualquier destinatario real desde el Gmail del propio
+negocio), email vía Resend cuando no hay Gmail conectado (directo y en
+campañas programadas de recordatorio/reactivación, con la restricción de
+Resend en modo de prueba: solo entrega a la dirección de la propia cuenta
+de Resend hasta verificar un dominio), facturación con Stripe (checkout, portal y
 webhooks) con claves y precios reales, monitorización de errores tanto de
 las Edge Functions como del frontend con Sentry (`Sentry.ErrorBoundary`
 evita la pantalla en blanco ante un fallo de React y reporta el error),

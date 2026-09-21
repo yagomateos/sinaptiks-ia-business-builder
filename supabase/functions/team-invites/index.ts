@@ -29,7 +29,7 @@ import {
   json,
   type AuthContext,
 } from '../_shared/auth.ts'
-import { isResendConfigured, sendEmail } from '../_shared/resend-client.ts'
+import { isBusinessEmailConfigured, sendBusinessEmail } from '../_shared/email.ts'
 import { teamInviteEmailHtml } from '../_shared/email-templates.ts'
 
 const APP_URL = Deno.env.get('APP_URL') || 'https://sinaptiks-ia-business-builder.vercel.app'
@@ -125,14 +125,15 @@ async function handleInvite(ctx: AuthContext, request: Request): Promise<Respons
 
   const inviteUrl = `${APP_URL}/invitacion/${invite.code}`
 
-  // El envío es best-effort: si Resend no está configurado o falla (p. ej.
-  // el modo de prueba de Resend solo entrega al email de la propia cuenta),
-  // la invitación sigue existiendo de verdad — se devuelve el enlace para
-  // que quien invita pueda compartirlo a mano.
+  // El envío es best-effort: si no hay ningún proveedor configurado o falla
+  // (p. ej. el modo de prueba de Resend solo entrega al email de la propia
+  // cuenta — si el negocio conectó su Gmail, esto no aplica), la invitación
+  // sigue existiendo de verdad — se devuelve el enlace para que quien
+  // invita pueda compartirlo a mano.
   let emailSent = false
-  if (isResendConfigured) {
+  if (await isBusinessEmailConfigured(admin, businessId)) {
     try {
-      await sendEmail({
+      await sendBusinessEmail(admin, businessId, {
         to: email,
         subject: `${inviter?.full_name ?? 'Alguien'} te ha invitado a ${business?.name ?? 'su negocio'} en Sinaptkis`,
         html: teamInviteEmailHtml({
