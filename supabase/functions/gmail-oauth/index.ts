@@ -17,7 +17,7 @@
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { isGmailOAuthConfigured } from '../_shared/gmail-client.ts'
-import { assertBusinessAccess, authenticate, corsHeadersFor, errorResponse, HttpError, json as jsonResponse } from '../_shared/auth.ts'
+import { applyCors, assertBusinessAccess, authenticate, corsHeadersFor, errorResponse, HttpError, json as jsonResponse } from '../_shared/auth.ts'
 
 const CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID') ?? ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET') ?? ''
@@ -57,6 +57,10 @@ Deno.serve(async (request) => {
     return await handleCallback(url)
   }
 
+  if (step === 'disconnect') {
+    return applyCors(await handleDisconnect(request), request)
+  }
+
   return json({ error: 'Ruta desconocida' }, 404)
 })
 
@@ -87,6 +91,53 @@ async function handleMintStartCode(request: Request): Promise<Response> {
     if (error) throw new HttpError(500, 'No se pudo iniciar la conexión')
 
     return jsonResponse({ code: data.code })
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
+/**
+ * Mismo motivo que en google-calendar-oauth: "Desconectar" solo cambiaba
+ * `integrations.status` — el refresh_token seguía guardado, y
+ * getGmailProvider() no mira `integrations.status`, así que el negocio
+ * habría seguido enviando email real desde una cuenta que creía haber
+ * desconectado.
+ */
+async function handleDisconnect(request: Request): Promise<Response> {
+  try {
+    if (request.method !== 'POST') throw new HttpError(405, 'Método no permitido')
+
+    const ctx = await authenticate(request)
+    const { businessId } = (await request.json().catch(() => ({}))) as { businessId?: string }
+    await assertBusinessAccess(ctx, businessId ?? '')
+
+    const { data: existing } = await admin
+      .from('channel_credentials')
+      .select('credential')
+      .eq('business_id', businessId)
+      .eq('provider', 'gmail')
+      .maybeSingle()
+
+    const refreshToken = (existing?.credential as { refresh_token?: string } | null)?.refresh_token
+    if (refreshToken) {
+      try {
+        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshToken)}`, {
+          method: 'POST',
+        })
+      } catch {
+        // No bloquea el borrado local — eso es lo que de verdad protege.
+      }
+    }
+
+    await admin.from('channel_credentials').delete().eq('business_id', businessId).eq('provider', 'gmail')
+
+    await admin
+      .from('integrations')
+      .update({ status: 'no_conectado', connected_at: null, last_error: null })
+      .eq('business_id', businessId)
+      .eq('provider', 'gmail')
+
+    return jsonResponse({ ok: true })
   } catch (error) {
     return errorResponse(error)
   }

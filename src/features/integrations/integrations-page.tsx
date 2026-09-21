@@ -197,6 +197,31 @@ async function startGoogleOAuth(functionSlug: 'google-calendar-oauth' | 'gmail-o
   window.location.href = `${apiBaseUrl}/${functionSlug}/start?businessId=${businessId}&code=${code}`
 }
 
+/**
+ * Antes, "Desconectar" en Calendar/Gmail solo ponía `integrations.status` en
+ * 'no_conectado' — el refresh_token seguía guardado y el backend habría
+ * seguido usándolo (crear citas reales, mandar email real) sin que el
+ * negocio lo supiera. Esto borra la credencial de verdad en el servidor.
+ */
+async function disconnectGoogleOAuth(functionSlug: 'google-calendar-oauth' | 'gmail-oauth', businessId: string) {
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
+  if (!apiBaseUrl) throw new Error('Todavía no hay un backend conectado para gestionar canales.')
+
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('Sesión no válida')
+
+  const response = await fetch(`${apiBaseUrl}/${functionSlug}/disconnect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ businessId }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}) as { error?: string })
+    throw new Error(payload.error ?? 'No hemos podido desconectar.')
+  }
+}
+
 function IntegrationCard({
   provider,
   integration,
@@ -268,6 +293,26 @@ function IntegrationCard({
     mutationFn: () => startGoogleOAuth('gmail-oauth', businessId),
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'No hemos podido iniciar la conexión.'),
+  })
+
+  const disconnectGoogleCalendar = useMutation({
+    mutationFn: () => disconnectGoogleOAuth('google-calendar-oauth', businessId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
+      toast.success('Google Calendar desconectado')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido desconectar Google Calendar.'),
+  })
+
+  const disconnectGmail = useMutation({
+    mutationFn: () => disconnectGoogleOAuth('gmail-oauth', businessId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', businessId] })
+      toast.success('Gmail desconectado')
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido desconectar Gmail.'),
   })
 
   const disconnectTelegram = useMutation({
@@ -350,13 +395,9 @@ function IntegrationCard({
           variant={status === 'conectado' ? 'outline' : 'default'}
           size="sm"
           className="mt-4 w-full"
-          loading={connectGoogleCalendar.isPending}
+          loading={connectGoogleCalendar.isPending || disconnectGoogleCalendar.isPending}
           onClick={() =>
-            status === 'conectado'
-              ? integrationsRepository
-                  .setStatus(businessId, provider, 'no_conectado')
-                  .then(() => queryClient.invalidateQueries({ queryKey: ['integrations', businessId] }))
-              : connectGoogleCalendar.mutate()
+            status === 'conectado' ? disconnectGoogleCalendar.mutate() : connectGoogleCalendar.mutate()
           }
         >
           {status === 'conectado' ? 'Desconectar' : 'Conectar con Google'}
@@ -366,14 +407,8 @@ function IntegrationCard({
           variant={status === 'conectado' ? 'outline' : 'default'}
           size="sm"
           className="mt-4 w-full"
-          loading={connectGmail.isPending}
-          onClick={() =>
-            status === 'conectado'
-              ? integrationsRepository
-                  .setStatus(businessId, provider, 'no_conectado')
-                  .then(() => queryClient.invalidateQueries({ queryKey: ['integrations', businessId] }))
-              : connectGmail.mutate()
-          }
+          loading={connectGmail.isPending || disconnectGmail.isPending}
+          onClick={() => (status === 'conectado' ? disconnectGmail.mutate() : connectGmail.mutate())}
         >
           {status === 'conectado' ? 'Desconectar' : 'Conectar con Google'}
         </Button>
