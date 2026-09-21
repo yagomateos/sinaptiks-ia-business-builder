@@ -397,7 +397,10 @@ recordatorio/reactivación), facturación con Stripe (checkout, portal y
 webhooks) con claves y precios reales, monitorización de errores tanto de
 las Edge Functions como del frontend con Sentry (`Sentry.ErrorBoundary`
 evita la pantalla en blanco ante un fallo de React y reporta el error),
-analíticas y panel de administración.
+equipo (invitar por email con enlace de un solo uso, cambiar rol,
+quitar acceso, abandonar un negocio uno mismo), límites de plan
+aplicados de verdad al activar automatizaciones/agentes, analíticas y
+panel de administración.
 
 **Pendiente por trámite externo, con estado honesto mientras tanto:**
 WhatsApp — fuera del marketplace por ahora (backend y modelo de datos
