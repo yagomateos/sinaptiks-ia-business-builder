@@ -109,6 +109,30 @@ export const businessesRepository = {
     if (error) throw toAppError(error, 'No hemos podido quitar a esta persona.')
   },
 
+  /**
+   * Abandonar un negocio uno mismo. La política RLS bloquea esto para el
+   * propietario (no puede dejar el negocio sin nadie al mando) — cuando eso
+   * pasa, el delete no falla con un error, simplemente no afecta a ninguna
+   * fila, así que hay que comprobar `data` para no fingir un éxito que no
+   * fue tal.
+   */
+  async leave(businessId: UUID): Promise<void> {
+    const { data: auth } = await supabase.auth.getUser()
+    if (!auth.user) throw new AppError('No hay sesión iniciada.')
+
+    const { data, error } = await supabase
+      .from('business_members')
+      .delete()
+      .eq('business_id', businessId)
+      .eq('user_id', auth.user.id)
+      .select('id')
+
+    if (error) throw toAppError(error, 'No hemos podido salir de este negocio.')
+    if (!data || data.length === 0) {
+      throw new AppError('El propietario no puede abandonar el negocio. Transfiere la propiedad o elimínalo en su lugar.')
+    }
+  },
+
   async getCurrentProfile(): Promise<Profile> {
     const { data: auth } = await supabase.auth.getUser()
     if (!auth.user) throw new AppError('No hay sesión iniciada.')

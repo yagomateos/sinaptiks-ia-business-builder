@@ -224,6 +224,19 @@ function BusinessSettings({ businessId, canManage }: { businessId: string; canMa
       toast.error(error instanceof Error ? error.message : 'No hemos podido eliminar el negocio.'),
   })
 
+  const [confirmingLeave, setConfirmingLeave] = useState(false)
+
+  const leaveBusiness = useMutation({
+    mutationFn: () => businessesRepository.leave(businessId),
+    onSuccess: async () => {
+      await refresh()
+      toast.success('Has salido del negocio')
+      navigate('/app', { replace: true })
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'No hemos podido salir del negocio.'),
+  })
+
   if (query.isLoading) return <LoadingState />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
   if (!draft) {
@@ -406,7 +419,7 @@ function BusinessSettings({ businessId, canManage }: { businessId: string; canMa
             </Button>
           </div>
 
-          {role === 'owner' && (
+          {role === 'owner' ? (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
               <div>
                 <p className="text-sm font-medium text-destructive">Eliminar este negocio</p>
@@ -426,6 +439,18 @@ function BusinessSettings({ businessId, canManage }: { businessId: string; canMa
                 Eliminar negocio
               </Button>
             </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+              <div>
+                <p className="text-sm font-medium">Salir de este negocio</p>
+                <p className="text-xs text-muted-foreground">
+                  Dejarás de tener acceso. Alguien con acceso tendría que volver a invitarte.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setConfirmingLeave(true)}>
+                Salir del negocio
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -437,6 +462,16 @@ function BusinessSettings({ businessId, canManage }: { businessId: string; canMa
         description={`Vas a eliminar "${draft.business_name}" y todos sus datos: contactos, conversaciones, automatizaciones, agentes y citas. No se puede deshacer.`}
         loading={removeBusiness.isPending}
         onConfirm={() => removeBusiness.mutate()}
+      />
+
+      <ConfirmDialog
+        open={confirmingLeave}
+        onOpenChange={setConfirmingLeave}
+        title="Salir del negocio"
+        description={`Dejarás de tener acceso a "${draft.business_name}".`}
+        confirmLabel="Salir"
+        loading={leaveBusiness.isPending}
+        onConfirm={() => leaveBusiness.mutate()}
       />
     </div>
   )
