@@ -51,6 +51,55 @@ export function automationEmailHtml(input: { businessName: string; heading: stri
 </html>`.trim()
 }
 
+export interface TeamInviteEmailInput {
+  businessName: string
+  inviterName: string
+  inviteUrl: string
+}
+
+export function teamInviteEmailHtml(input: TeamInviteEmailInput): string {
+  return `
+<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background-color:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="background:#4f46e5;padding:24px 28px;">
+                <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Sinaptkis</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;">
+                <p style="margin:0 0 12px;color:#111827;font-size:17px;font-weight:700;">
+                  ${escapeHtml(input.inviterName)} te ha invitado a ${escapeHtml(input.businessName)}
+                </p>
+                <p style="margin:0 0 24px;color:#374151;font-size:15px;line-height:1.6;">
+                  Acepta la invitación para entrar en el sistema digital de este negocio en Sinaptkis.
+                </p>
+                <a href="${input.inviteUrl}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 24px;border-radius:8px;">
+                  Ver invitación
+                </a>
+                <p style="margin:24px 0 0;color:#9ca3af;font-size:12px;line-height:1.5;">
+                  Si no esperabas este correo, puedes ignorarlo con tranquilidad.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 28px;background:#f9fafb;border-top:1px solid #f0f0f2;">
+                <p style="margin:0;color:#9ca3af;font-size:12px;">Enviado por Sinaptkis.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`.trim()
+}
+
 export interface AppointmentEmailInput {
   businessName: string
   nombre: string

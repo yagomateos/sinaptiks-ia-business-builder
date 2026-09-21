@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,11 @@ type LoginValues = z.infer<typeof loginSchema>
 export function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Un enlace de invitación manda aquí con ?returnTo=/invitacion/:code — sin
+  // esto, entrar siempre aterrizaba en /app y perdía el motivo por el que la
+  // persona había venido a iniciar sesión.
+  const returnTo = searchParams.get('returnTo')
 
   const {
     register,
@@ -34,7 +39,7 @@ export function LoginPage() {
   async function onSubmit(values: LoginValues) {
     try {
       await signIn(values.email, values.password)
-      navigate('/app', { replace: true })
+      navigate(returnTo || '/app', { replace: true })
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'No hemos podido iniciar sesión.'
       setError('root', { message })
@@ -49,7 +54,10 @@ export function LoginPage() {
       footer={
         <>
           ¿Todavía no tienes cuenta?{' '}
-          <Link to="/registro" className="font-medium text-primary hover:underline">
+          <Link
+            to={returnTo ? `/registro?returnTo=${encodeURIComponent(returnTo)}` : '/registro'}
+            className="font-medium text-primary hover:underline"
+          >
             Crear una cuenta
           </Link>
         </>

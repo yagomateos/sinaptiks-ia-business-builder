@@ -95,3 +95,12 @@ test.describe('Páginas legales', () => {
     await expect(page).toHaveURL(/\/privacidad$/)
   })
 })
+
+test.describe('Página de invitación', () => {
+  // Un código real crearía una fila en el backend compartido, así que solo
+  // se cubre el camino de "no existe" — de solo lectura, no muta nada.
+  test('un código que no existe muestra "invitación no encontrada"', async ({ page }) => {
+    await page.goto('/invitacion/00000000-0000-0000-0000-000000000000')
+    await expect(page.getByRole('heading', { name: 'Invitación no encontrada' })).toBeVisible()
+  })
+})

@@ -16,6 +16,7 @@ import type {
   IntegrationStatus,
   LeadStage,
   LeadTemperature,
+  MemberRole,
   PlanKey,
   SubscriptionStatus,
 } from './types'
@@ -106,6 +107,12 @@ export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   confirmada: 'Confirmada',
   cancelada: 'Cancelada',
   error: 'Error al crear',
+}
+
+export const MEMBER_ROLE_LABELS: Record<MemberRole, string> = {
+  owner: 'Propietario',
+  admin: 'Administrador',
+  member: 'Miembro',
 }
 
 export const PLAN_LABELS: Record<PlanKey, string> = {

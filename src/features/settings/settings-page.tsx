@@ -1,7 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Check, CreditCard, Download, ExternalLink, Plus, Trash2, UserRound, Users } from 'lucide-react'
+import {
+  Building2,
+  Check,
+  Copy,
+  CreditCard,
+  Download,
+  ExternalLink,
+  Mail,
+  Plus,
+  Trash2,
+  UserPlus,
+  UserRound,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +27,14 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -27,11 +51,13 @@ import { subscriptionsRepository } from '@/services/repositories/subscriptions.r
 import { stripeService } from '@/services/billing/stripe.service'
 import { businessService } from '@/services/system/business.service'
 import { dataExportService } from '@/services/system/data-export.service'
+import { teamInvitesRepository, type PendingInvite } from '@/services/repositories/team-invites.repository'
 import { PLAN_LIMITS } from '@/domain/catalog/plan-limits'
 import {
   BRAND_VOICE_LABELS,
   GOAL_LABELS,
   INDUSTRY_LABELS,
+  MEMBER_ROLE_LABELS,
   PLAN_LABELS,
   SUBSCRIPTION_STATUS_LABELS,
 } from '@/domain/vocabulary'
@@ -40,20 +66,13 @@ import {
   INDUSTRIES,
   type BrandVoice,
   type Industry,
-  type MemberRole,
   type PlanKey,
   type Service,
 } from '@/domain/types'
 import { useAuth } from '@/features/auth/auth-context'
 import { useBusiness } from '@/features/businesses/business-context'
 import { useEditableDraft } from '@/hooks/use-editable-draft'
-import { cn, formatCurrency, initials } from '@/lib/utils'
-
-const ROLE_LABELS: Record<MemberRole, string> = {
-  owner: 'Propietario',
-  admin: 'Administrador',
-  member: 'Miembro',
-}
+import { cn, formatCurrency, formatDate, initials } from '@/lib/utils'
 
 export function SettingsPage() {
   const { activeBusiness, canManage } = useBusiness()
@@ -605,46 +624,230 @@ function ServiceRow({ service, businessId }: { service: Service; businessId: str
 /* ------------------------------------------------------------------ */
 
 function TeamSettings({ businessId, canManage }: { businessId: string; canManage: boolean }) {
+  const [inviting, setInviting] = useState(false)
+
   const query = useQuery({
     queryKey: ['members', businessId],
     queryFn: () => businessesRepository.listMembers(businessId),
     enabled: Boolean(businessId),
   })
 
+  const invitesQuery = useQuery({
+    queryKey: ['invites', businessId],
+    queryFn: () => teamInvitesRepository.listPending(businessId),
+    enabled: Boolean(businessId) && canManage,
+  })
+
   if (query.isLoading) return <LoadingState />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
 
   const members = query.data ?? []
+  const invites = invitesQuery.data ?? []
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm">Personas con acceso</CardTitle>
-      </CardHeader>
-      <CardContent className="divide-y">
-        {members.map((member) => {
-          const name = member.profile?.full_name ?? member.profile?.email ?? 'Sin nombre'
-          return (
-            <div key={member.id} className="flex items-center gap-3 py-3">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>{initials(name)}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{name}</p>
-                <p className="truncate text-xs text-muted-foreground">{member.profile?.email}</p>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between pb-3">
+          <CardTitle className="text-sm">Personas con acceso</CardTitle>
+          {canManage && (
+            <Button size="sm" onClick={() => setInviting(true)}>
+              <UserPlus />
+              Invitar
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="divide-y">
+          {members.map((member) => {
+            const name = member.profile?.full_name ?? member.profile?.email ?? 'Sin nombre'
+            return (
+              <div key={member.id} className="flex items-center gap-3 py-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback>{initials(name)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{member.profile?.email}</p>
+                </div>
+                <Badge variant="secondary">{MEMBER_ROLE_LABELS[member.role]}</Badge>
               </div>
-              <Badge variant="secondary">{ROLE_LABELS[member.role]}</Badge>
-            </div>
-          )
-        })}
+            )
+          })}
+        </CardContent>
+      </Card>
 
-        {canManage && (
-          <p className="pt-4 text-xs text-muted-foreground">
-            Podrás invitar a más personas cuando conectemos el envío de correos.
-          </p>
+      {canManage && invites.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Invitaciones pendientes</CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y">
+            {invites.map((invite) => (
+              <PendingInviteRow key={invite.id} invite={invite} businessId={businessId} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <InviteDialog open={inviting} onOpenChange={setInviting} businessId={businessId} />
+    </div>
+  )
+}
+
+function PendingInviteRow({ invite, businessId }: { invite: PendingInvite; businessId: string }) {
+  const queryClient = useQueryClient()
+
+  const revoke = useMutation({
+    mutationFn: () => teamInvitesRepository.revoke(invite.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invites', businessId] })
+      toast.success('Invitación revocada')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'No hemos podido revocarla.'),
+  })
+
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary">
+        <Mail className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{invite.email}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          Invitado {formatDate(invite.created_at)} · caduca {formatDate(invite.expires_at)}
+        </p>
+      </div>
+      <Badge variant="secondary">{MEMBER_ROLE_LABELS[invite.role]}</Badge>
+      <Button variant="ghost" size="sm" loading={revoke.isPending} onClick={() => revoke.mutate()}>
+        Revocar
+      </Button>
+    </div>
+  )
+}
+
+const inviteSchema = z.object({
+  email: z.string().trim().min(1, 'Escribe un email.').email('Escribe un email válido.'),
+  role: z.enum(['admin', 'member']),
+})
+
+type InviteValues = z.infer<typeof inviteSchema>
+
+function InviteDialog({
+  open,
+  onOpenChange,
+  businessId,
+}: {
+  open: boolean
+  onOpenChange(open: boolean): void
+  businessId: string
+}) {
+  const queryClient = useQueryClient()
+  const [result, setResult] = useState<{ inviteUrl: string; emailSent: boolean } | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<InviteValues>({
+    resolver: zodResolver(inviteSchema),
+    defaultValues: { email: '', role: 'member' },
+  })
+
+  function close(nextOpen: boolean) {
+    onOpenChange(nextOpen)
+    if (!nextOpen) {
+      reset()
+      setResult(null)
+    }
+  }
+
+  async function onSubmit(values: InviteValues) {
+    try {
+      const invite = await teamInvitesRepository.invite(businessId, values.email, values.role)
+      queryClient.invalidateQueries({ queryKey: ['invites', businessId] })
+      setResult(invite)
+      toast.success(invite.emailSent ? 'Invitación enviada' : 'Invitación creada')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No hemos podido invitar.')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Invitar a alguien</DialogTitle>
+          <DialogDescription>
+            Le mandamos un email con un enlace para unirse a este negocio.
+          </DialogDescription>
+        </DialogHeader>
+
+        {result ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {result.emailSent
+                ? 'Ya le hemos enviado el email. También puedes compartir este enlace a mano:'
+                : 'No hemos podido enviarle el email (revisa la configuración de Resend) — comparte este enlace a mano:'}
+            </p>
+            <div className="flex items-center gap-2">
+              <Input readOnly value={result.inviteUrl} className="text-xs" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(result.inviteUrl)
+                  toast.success('Enlace copiado')
+                }}
+              >
+                <Copy />
+              </Button>
+            </div>
+            <Button className="w-full" onClick={() => close(false)}>
+              Listo
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <div className="space-y-1.5">
+              <Label htmlFor="inviteEmail">Email</Label>
+              <Input
+                id="inviteEmail"
+                type="email"
+                placeholder="persona@empresa.com"
+                aria-invalid={Boolean(errors.email)}
+                {...register('email')}
+              />
+              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Rol</Label>
+              <Select value={watch('role')} onValueChange={(value) => setValue('role', value as InviteValues['role'])}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">Miembro</SelectItem>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => close(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={isSubmitting}>
+                Invitar
+              </Button>
+            </DialogFooter>
+          </form>
         )}
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   )
 }
 

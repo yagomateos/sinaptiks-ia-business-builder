@@ -123,6 +123,11 @@ const TermsPage = lazy(
   import('@/features/legal/terms-page').then((m) => ({ default: m.TermsPage })),
   ),
 )
+const InvitationPage = lazy(
+  lazyRetry(() =>
+  import('@/features/businesses/invitation-page').then((m) => ({ default: m.InvitationPage })),
+  ),
+)
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -187,6 +192,18 @@ export const router = createBrowserRouter([
     element: (
       <Lazy>
         <TermsPage />
+      </Lazy>
+    ),
+  },
+  {
+    // Pública y sin guardas a propósito: la propia página decide qué mostrar
+    // según haya sesión o no (ver invitation-page.tsx) — RequireAuth perdería
+    // el código al redirigir a /entrar, y RedirectIfAuthenticated echaría a
+    // quien ya tiene sesión antes de poder aceptar.
+    path: '/invitacion/:code',
+    element: (
+      <Lazy>
+        <InvitationPage />
       </Lazy>
     ),
   },

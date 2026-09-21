@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { MailCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,12 @@ type SignupValues = z.infer<typeof signupSchema>
 export function SignUpPage() {
   const { signUp } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Un enlace de invitación manda aquí con ?returnTo=/invitacion/:code y
+  // ?email= — el email prellenado, y returnTo se reenvía al enlace de
+  // "Volver a entrar" tras confirmar, para no perder por qué había venido.
+  const returnTo = searchParams.get('returnTo')
+  const prefillEmail = searchParams.get('email') ?? ''
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
 
   const {
@@ -36,7 +42,7 @@ export function SignUpPage() {
     formState: { errors, isSubmitting },
   } = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { fullName: '', email: '', password: '' },
+    defaultValues: { fullName: '', email: prefillEmail, password: '' },
   })
 
   async function onSubmit(values: SignupValues) {
@@ -47,7 +53,7 @@ export function SignUpPage() {
         setConfirmationEmail(values.email)
       } else {
         toast.success('Cuenta creada. Vamos a montar tu sistema.')
-        navigate('/nuevo-negocio', { replace: true })
+        navigate(returnTo || '/nuevo-negocio', { replace: true })
       }
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'No hemos podido crear tu cuenta.'
@@ -69,7 +75,9 @@ export function SignUpPage() {
           </p>
         </div>
         <Button variant="outline" className="mt-6 w-full" asChild>
-          <Link to="/entrar">Volver a entrar</Link>
+          <Link to={returnTo ? `/entrar?returnTo=${encodeURIComponent(returnTo)}` : '/entrar'}>
+            Volver a entrar
+          </Link>
         </Button>
       </AuthLayout>
     )
