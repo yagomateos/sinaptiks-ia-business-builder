@@ -65,8 +65,10 @@ import {
   BRAND_VOICES,
   INDUSTRIES,
   type BrandVoice,
+  type BusinessMember,
   type Industry,
   type PlanKey,
+  type Profile,
   type Service,
 } from '@/domain/types'
 import { useAuth } from '@/features/auth/auth-context'
@@ -625,6 +627,7 @@ function ServiceRow({ service, businessId }: { service: Service; businessId: str
 
 function TeamSettings({ businessId, canManage }: { businessId: string; canManage: boolean }) {
   const [inviting, setInviting] = useState(false)
+  const { user } = useAuth()
 
   const query = useQuery({
     queryKey: ['members', businessId],
@@ -657,21 +660,17 @@ function TeamSettings({ businessId, canManage }: { businessId: string; canManage
           )}
         </CardHeader>
         <CardContent className="divide-y">
-          {members.map((member) => {
-            const name = member.profile?.full_name ?? member.profile?.email ?? 'Sin nombre'
-            return (
-              <div key={member.id} className="flex items-center gap-3 py-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback>{initials(name)}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{member.profile?.email}</p>
-                </div>
-                <Badge variant="secondary">{MEMBER_ROLE_LABELS[member.role]}</Badge>
-              </div>
-            )
-          })}
+          {members.map((member) => (
+            <MemberRow
+              key={member.id}
+              member={member}
+              businessId={businessId}
+              // Ni el propio dueño ni tú mismo os podéis quitar u ocultar acceso
+              // desde aquí — la transferencia de propiedad es otra funcionalidad,
+              // y quitarte tu propio acceso por error sería difícil de deshacer.
+              canManage={canManage && member.role !== 'owner' && member.user_id !== user?.id}
+            />
+          ))}
         </CardContent>
       </Card>
 
@@ -689,6 +688,81 @@ function TeamSettings({ businessId, canManage }: { businessId: string; canManage
       )}
 
       <InviteDialog open={inviting} onOpenChange={setInviting} businessId={businessId} />
+    </div>
+  )
+}
+
+function MemberRow({
+  member,
+  businessId,
+  canManage,
+}: {
+  member: BusinessMember & { profile: Profile | null }
+  businessId: string
+  canManage: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const name = member.profile?.full_name ?? member.profile?.email ?? 'Sin nombre'
+
+  const changeRole = useMutation({
+    mutationFn: (role: 'admin' | 'member') => businessesRepository.updateMemberRole(member.id, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members', businessId] })
+      toast.success('Rol actualizado')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'No hemos podido cambiar el rol.'),
+  })
+
+  const remove = useMutation({
+    mutationFn: () => businessesRepository.removeMember(member.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members', businessId] })
+      toast.success(`${name} ya no tiene acceso a este negocio`)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'No hemos podido quitar el acceso.'),
+  })
+
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <Avatar className="h-8 w-8">
+        <AvatarFallback>{initials(name)}</AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="truncate text-xs text-muted-foreground">{member.profile?.email}</p>
+      </div>
+
+      {canManage ? (
+        <>
+          <Select
+            value={member.role}
+            onValueChange={(value) => changeRole.mutate(value as 'admin' | 'member')}
+          >
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="member">Miembro</SelectItem>
+              <SelectItem value="admin">Administrador</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(true)}>
+            Quitar acceso
+          </Button>
+          <ConfirmDialog
+            open={confirmingRemove}
+            onOpenChange={setConfirmingRemove}
+            title="Quitar acceso"
+            description={`${name} dejará de poder entrar a este negocio.`}
+            confirmLabel="Quitar acceso"
+            loading={remove.isPending}
+            onConfirm={() => remove.mutate()}
+          />
+        </>
+      ) : (
+        <Badge variant="secondary">{MEMBER_ROLE_LABELS[member.role]}</Badge>
+      )}
     </div>
   )
 }
